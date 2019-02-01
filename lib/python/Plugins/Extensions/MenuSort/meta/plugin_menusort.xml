@@ -1,0 +1,16 @@
+<!--suppress XmlUnboundNsPrefix -->
+<default>
+	  <prerequisites>
+                    <tag type="System" />
+	  </prerequisites>
+          <info>
+                    <author>PB</author>
+                    <name>MenuSort</name>
+                    <packagename>enigma2-plugin-extensions-menusort</packagename>
+                    <shortdescription>Manage Menus</shortdescription>
+                    <description>Menu Manager.</description>
+          </info>
+	  <files type="package"> <!-- without version, without .ipk -->
+		<file type="package" name="enigma2-plugin-extensions-menusort" />
+	  </files>
+</default>

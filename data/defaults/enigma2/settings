@@ -1,0 +1,16 @@
+config.misc.rcused=1
+config.usage.multibouquet=true
+config.usage.setup_level=expert
+config.usage.e1like_radio_mode=true
+config.usage.show_event_progress_in_servicelist=true
+config.estuary.MenuStyle=IconWall
+config.subtitles.dvb_subtitles_yellow=true
+config.subtitles.pango_subtitle_colors=2
+config.subtitles.ttx_subtitle_colors=2
+config.skin.primary_skin=Estuary/skin.xml
+config.usage.serviceitems_per_page=15
+config.usage.servicenum_fontsize=0
+config.movielist.itemsperpage=8
+config.plugins.WeatherPlugin.Entry.0.city=Heidelberg, Germany
+config.plugins.WeatherPlugin.Entry.0.weatherlocationcode=wc:GMXX0053
+config.plugins.WeatherPlugin.entrycount=1

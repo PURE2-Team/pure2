@@ -1,0 +1,153 @@
+<!--suppress XmlUnboundNsPrefix -->
+<wizard>
+    <step id="restorequestion">
+        <condition>
+from Plugins.SystemPlugins.SoftwareManager.ImageWizard import checkConfigBackup
+self.backuppath = checkConfigBackup()
+self.condition = (self.backuppath is not None and config.misc.firstrun.value)
+        </condition>
+        <text value="Do you want to restore your settings?" />
+        <list>
+            <listentry caption="Yes, restore the settings now" step="restore" />
+            <listentry caption="No, just start my %s %s" step="end" />
+        </list>
+        <code>
+self.clearSelectedKeys()
+self.selectKey("OK")
+        </code>
+    </step>
+
+    <step id="welcome">
+        <text value="Welcome to the image upgrade wizard. The wizard will assist you in upgrading the firmware of your receiver by providing a backup facility for your current settings and a short explanation of how to upgrade your firmware." />
+        <list>
+            <listentry caption="OK, guide me through the upgrade process" step="backupquestion" />
+            <listentry caption="Exit the wizard" step="end" />
+        </list>
+    </step>
+
+    <step id="backupquestion">
+        <text value="The wizard can backup your current settings. Do you want to do a backup now?" />
+        <list>
+            <listentry caption="Yes, backup my settings!" step="backupwhere" />
+            <listentry caption="No backup needed" step="upgrade" />
+        </list>
+    </step>
+
+    <step id="backupwhere" nextstep="backup">
+        <text value="Where do you want to backup your settings?" />
+        <list type="dynamic" source="listDevices" evaluation="deviceSelectionMade" onselect="deviceSelectionMoved" />
+    </step>
+
+    <step id="backup" nextstep="backupresult">
+        <text value="You have chosen to backup your settings. Please press OK to start the backup now." />
+        <config screen="BackupScreen" module="Plugins.SystemPlugins.SoftwareManager.BackupRestore" type="ConfigList" />
+        <code pos="after" async="yes">
+self.currStep = self.getStepWithID('backupresult')
+self.afterAsyncCode()
+        </code>
+    </step>
+
+    <step id="backupresult" nextstep="upgrade">
+        <condition>
+from Plugins.SystemPlugins.SoftwareManager.ImageWizard import checkBackupFile
+self.backuppath = checkBackupFile()
+self.condition = (self.backuppath is True)
+        </condition>
+        <text value="Your backup succeeded. We will now continue to explain the further upgrade process." />
+    </step>
+
+    <step id="backupresult" nextstep="backupwhere">
+        <condition>
+from Plugins.SystemPlugins.SoftwareManager.ImageWizard import checkBackupFile
+self.backuppath = checkBackupFile()
+self.condition = (self.backuppath is False)
+        </condition>
+        <text value="The backup failed. Please choose a different backup location." />
+    </step>
+
+    <step id="restore" nextstep="backupresult">
+        <text value="You have chosen to restore your settings. Enigma2 will restart after restore. Please press OK to start the restore now." />
+        <config screen="RestoreScreen" module="Plugins.SystemPlugins.SoftwareManager.BackupRestore" type="ConfigList" />
+    </step>
+
+    <step id="upgrade">
+        <condition>
+from boxbranding import getBoxType
+self.box = getBoxType()
+self.condition = (self.box == "dm7020hd" or self.box == "dm7020hdv2" or self.box == "dm800sev2" or self.box == "dm500hdv2" or self.box == "dm800" or self.box == "dm800se" or self.box == "dm500hd")
+        </condition>
+        <text value="No online flashing available for Dream Multimedia Hardware. You have to install new image via browser" />
+        <list>
+            <listentry caption="Bring box to flashmodus" step="killkernel" />
+            <listentry caption="shutdown box" step="shutdown" />
+            <listentry caption="do nothing." step="end" />
+        </list>
+    </step>
+
+    <step id="upgrade">
+        <condition>
+from boxbranding import getBoxType
+self.box = getBoxType()
+self.condition = (self.box != "dm7020hd" and self.box != "dm7020hdv2" and self.box != "dm800sev2" and self.box != "dm500hdv2" and self.box != "dm800" and self.box != "dm800se" and self.box != "dm500hd" and not self.box.startswith('az') and not self.box.startswith('ebox'))
+        </condition>
+        <text value="No Dream Multimedia Hardware detected. You can install the image as written in manual or use onlineflashing" />
+        <list>
+            <listentry caption="Onlineflashing" step="onlineflashing" />
+            <listentry caption="shutdown box" step="shutdown" />
+            <listentry caption="do nothing." step="end" />
+        </list>
+    </step>
+
+    <step id="upgrade">
+        <condition>
+from boxbranding import getBoxType
+self.box = getBoxType()
+self.condition = (self.box.startswith('az') or self.box.startswith('ebox'))
+        </condition>
+        <text value="No online flashing available. You have to flash as written in manual" />
+        <list>
+            <listentry caption="shutdown box" step="shutdown" />
+            <listentry caption="do nothing." step="end" />
+        </list>
+    </step>
+
+    <step id="killkernel">
+        <text value="Really bring box to flashmodus? \n\n There is no way to get back!" />
+        <list>
+            <listentry caption="Really bring box to flashmodus"/>
+            <listentry caption="do nothing." step="end" />
+        </list>
+        <code pos="after">        
+import os
+if self["list"].index == 0:
+    os.system("opkg remove kernel --force-depends ; opkg remove kernel-base ; opkg remove kernel-image ; reboot -nf")
+        </code>
+    </step>
+
+    <step id="onlineflashing">
+        <text value="Flashing \n\n You can flash online or from local drive!" />
+        <list>
+            <listentry caption="Open Flashing"/>
+        </list>
+        <code pos="after">
+from Plugins.SystemPlugins.SoftwareManager.Flash_online import FlashOnline
+if self["list"].index == 0:
+    self.session.open(FlashOnline)
+        </code>
+    </step>
+
+    <step id="shutdown" nextstep="shutdown">
+        <code>
+from enigma import quitMainloop
+quitMainloop(1)
+        </code>
+        <text value="Your receiver is shutting down. Please stand by..." />
+    </step>
+
+    <step id="end" laststep="true">
+        <condition>
+self.condition = self.isLastWizard
+        </condition>
+        <text value="The wizard is finished now." />
+    </step>
+</wizard>

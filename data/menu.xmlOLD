@@ -1,0 +1,240 @@
+<!--suppress XmlUnboundNsPrefix -->
+<menu text="Mainmenu" title="Main menu">
+	<id val="mainmenu" />
+<!-- the following types are allowed:
+	<screen [module="mod"] [screen="classname"]>[arguments]</screen>
+		executes Screen called "classname" from module "Screen.mod"
+		if no module is given, Screen must be globally available.
+		if no screen is given, module is used as screen class name.
+		arguments must be comma seperated (will be fed to eval), and can
+			use stuff from module
+		(of course you must specify at least one of module, screen.)
+	<setup id="id" />
+		opens a setup with specified id
+	<code> .. code .. </code>
+		"exec"s code
+-->
+		<menu level="0" text="Timers" entryID="timer_menu">
+			<id val="timermenu" />
+			<item weight="100" level="0" text="CronTimers" entryID="crontimer_edit"><screen module="CronTimer" screen="CronTimers" /></item>
+			<item weight="100" level="0" text="Timers" entryID="timer_edit"><screen module="TimerEdit" screen="TimerEditList" /></item>
+			<item weight="100" level="0" text="PowerTimers" entryID="powertimer_edit"><screen module="PowerTimerEdit" screen="PowerTimerEditList" /></item>
+		</menu>
+		<item level="1" text="VCR scart" entryID="scart_switch" configcondition="config.usage.show_vcr_scart" requires="ScartSwitch"><code>self.session.scart.VCRSbChanged(3)</code></item>
+
+		<menu level="0" text="Information" entryID="info_screen">
+			<id val="information" />
+			<item level="1" text="Service" entryID="service_info_screen"><screen module="ServiceInfo" screen="ServiceInfo"/></item>
+			<!-- <item level="0" text="About" entryID="about_screen"><screen module="About" /></item> -->
+			<item level="0" text="About" entryID="about_screen">
+			<code>
+from enigma import getDesktop
+width = getDesktop(0).size().width()
+if width >= 1920:
+	from Plugins.Extensions.pManager.FNCinfo import FNCinfo
+	self.session.open(FNCinfo)
+else:
+	from Screens.About import About
+	self.session.open(About)
+</code>
+</item>
+			<item level="2" text="Streaming clients info" entryID="streaming_clients_info_screen"><screen module="StreamingClientsInfo"/></item>
+		</menu>
+
+		<item level="1" text="Plugins" entryID="plugin_selection"><screen module="PluginBrowser" screen="PluginBrowser" /></item>
+		<menu level="0" text="Setup" flushConfigOnClose="1" entryID="setup_selection" >
+			<id val="setup" />
+			<menu weight="7" level="0" text="Service searching" entryID="service_searching_selection">
+				<id val="scan" />
+				<item weight="0" level="1" text="Basic settings" requires="USETunersetup" entryID="tuner_setup"><screen module="Satconfig" screen="TunerSetup" /></item>
+				<item weight="1" level="0" text="Tuner configuration" entryID="tuner_setup"><screen module="Satconfig" screen="NimSelection" /></item>
+				<item weight="5" level="0" text="Automatic scan" entryID="auto_scan"><screen module="ScanSetup" screen="ScanSimple" /></item>
+				<item weight="10" level="0" text="Manual scan" entryID="manual_scan"><screen module="ScanSetup" /></item>
+			</menu>
+			<menu weight="5" level="0" text="System" entryID="system_selection">
+				<id val="system" />
+				<item weight="10" text="A/V settings" entryID="av_setup"><screen module="VideoMode" screen="VideoSetup" /></item>
+				<item level="1" entryID="autolanguage_setup"><setup id="autolanguagesetup" /></item>
+				
+				<!-- StandardButtonSetup - remove from System Menu and paste in new group for Keyboard/RC -->
+				<!--<item level="0" entryID="remote_setup"><setup id="remotesetup"/></item>-->
+				
+				<item level="0" entryID="usage_setup"><setup id="usage" /></item>
+				<item level="0" entryID="channelselection_setup"><setup id="channelselection" /></item>
+				<menu level="2" text="EPG" entryID="epg_menu">
+					<id val="epg" />
+					<item level="0" entryID="epg_setup"><setup id="epgsettings" /></item>
+					<menu level="2" text="Load/Save" entryID="epgloadsave_menu">
+						<id val="epgloadsave_menu" />
+						<item level="0" entryID="saveepgcache" text="Save EPG">
+<code>
+from Components.EpgLoadSave import EpgSaveMsg
+def msgClosed(ret):
+	if ret:
+		from enigma import eEPGCache
+		epgcache = eEPGCache.getInstance()
+		epgcache.save()
+self.session.openWithCallback(msgClosed, EpgSaveMsg)
+</code>
+						</item>
+						<item level="0" entryID="loadepgcache" text="Load EPG">
+<code>
+from Components.EpgLoadSave import EpgLoadMsg
+def msgClosed(ret):
+	if ret:
+		from enigma import eEPGCache
+		epgcache = eEPGCache.getInstance()
+		epgcache.load()
+self.session.openWithCallback(msgClosed, EpgLoadMsg)
+</code>
+						</item>
+					</menu>
+					<item level="2" entryID="setup_epgmulti"><setup id="epgmulti" /></item>
+					<item level="2" entryID="setup_epgenhanced"><setup id="epgenhanced" /></item>
+					<item level="2" entryID="setup_epginfobar"><setup id="epginfobar" /></item>
+					<item level="2" entryID="setup_epginfobargraphical"><setup id="epginfobargraphical" /></item>
+					<item level="2" entryID="setup_epggraphical"><setup id="epggraphical" /></item>
+				</menu>
+				<menu level="0" text="Front Display Panel" entryID="display_selection" requires="Display">
+					<id val="display" />
+					<item level="0" entryID="display_setup"><setup id="display" /></item>
+				</menu>
+				<item level="0" text="HDMI CEC" entryID="hdmicec" requires="HDMICEC">
+<code>
+from Plugins.SystemPlugins.HdmiCEC.plugin import HdmiCECSetupScreen
+self.session.open(HdmiCECSetupScreen)
+</code>
+				</item>
+				<!-- Input Devices - remove from System Menu and paste in new group for Keyboard/RC -->
+				<!-- <item level="1" text="Input devices" entryID="input_device_setup"><screen module="InputDeviceSetup" screen="InputDeviceSelection" /></item>
+				<item text="Keyboard"><setup id="keyboard" /></item>-->
+				
+				
+				<!-- New group in System menu called Keyboard/RC - inside all for Keyboard and Remote Control -->
+				<menu level="0" text="Keyboard/RC" entryID="keyboardrc_control">
+					<id val="keyboardrc" />
+					<item level="1" entryID="remote_setup"><setup id="remotesetup"/></item>
+					<item level="1" text="Extra Button setup" entryID="buttonsetup_setup"><screen module="ButtonSetup" screen="ButtonSetup" /></item>
+					<item level="1" text="Keyboard" entryID="keyboard"><setup id="keyboard" /></item>
+					<item level="1" text="Input devices" entryID="input_device_setup"><screen module="InputDeviceSetup" screen="InputDeviceSelection" /></item>
+				</menu>
+				
+				<item level="0" text="Language" entryID="language_setup"><screen module="LanguageSelection" /></item>
+				<menu level="2" text="Logs" entryID="logs_setup">
+					<id val="logs_menu" />
+					<item level="2" entryID="logs_setup"><setup id="logs" /></item>
+					<item level="2" text="Logs manager" entryID="logs_man"><screen module="LogManager" screen="LogManager"/></item>
+				</menu>
+				<menu level="0" text="Network" entryID="network_menu">
+					<id val="network" />
+					<item level="0" text="Device setup" entryID="device_setup"><screen module="NetworkSetup" screen="NetworkAdapterSelection"/></item>
+					<item level="1" text="Mounts setup" entryID="netmounts_setup"><screen module="NetworkSetup" screen="NetworkMountsMenu"/></item>
+					<item level="2" text="AFP setup" entryID="netafp_setup"><screen module="NetworkSetup" screen="NetworkAfp"/></item>
+					<item level="2" text="FTP setup" entryID="netftp_setup"><screen module="NetworkSetup" screen="NetworkFtp"/></item>
+					<item level="2" text="Inadyn setup" entryID="Inadyn_setup"><screen module="NetworkSetup" screen="NetworkInadyn"/></item>
+					<item level="2" text="MiniDLNA setup" entryID="netushare_setup"><screen module="NetworkSetup" screen="NetworkMiniDLNA"/></item>
+					<item level="2" text="NFS setup" entryID="netnfs_setup"><screen module="NetworkSetup" screen="NetworkNfs"/></item>
+					<item level="2" text="OpenVPN setup" entryID="netvpn_setup"><screen module="NetworkSetup" screen="NetworkOpenvpn"/></item>
+					<item level="2" text="SABnzbd setup" entryID="netsabnzbd_setup" requires="SABSetup">
+<code>
+from Plugins.SystemPlugins.SABnzbd.plugin import SABnzbdSetupScreen
+self.session.open(SABnzbdSetupScreen)
+</code>
+					</item>
+					<item level="2" text="Samba setup" entryID="netsmba_setup"><screen module="NetworkSetup" screen="NetworkSamba"/></item>
+					<item level="2" text="Telnet setup" entryID="nettelnet_setup"><screen module="NetworkSetup" screen="NetworkTelnet"/></item>
+					<item level="2" text="uShare setup" entryID="netushare_setup"><screen module="NetworkSetup" screen="NetworkuShare"/></item>
+				</menu>
+				<item level="0" text="Recording settings" entryID="recording_setup"><screen module="Recordings" screen="RecordingSettings" /></item>
+				<item level="1" entryID="rfmod_setup" requires="RfModulator"><setup id="RFmod"/></item>
+				<menu level="0" text="Storage devices" entryID="hardisk_selection" requires="Harddisk">
+					<id val="harddisk" />
+					<item level="1" entryID="harddisk_setup"><setup id="harddisk"/></item>
+				</menu>
+				<item level="2" entryID="subtitle_setup"><setup id="subtitlesetup" /></item>
+				<item level="0" text="Timeshift settings" entryID="timshift_setup"><screen module="Timershift" screen="TimeshiftSettings" /></item>
+				<item level="0" entryID="time_setup"><setup id="time"/></item>
+				
+				<menu level="2" text="User interface" entryID="osd_setup" requires="OsdMenu">
+					<id val="osd_menu" />
+					<item level="0" entryID="user_interface"><setup id="userinterface" /></item>
+					<!-- ButtonSetup - remove from OSD Menu and paste in new group for Keyboard/RC -->
+					<!--<item level="2" text="Button setup" entryID="buttonsetup_setup"><screen module="ButtonSetup" screen="ButtonSetup" /></item>-->
+					<item level="0" text="Skin setup" entryID="skin_setup"><screen module="SkinSelector" screen="SkinSelector"/></item>
+					<item level="2" text="3D setup" entryID="osd3dsetup" requires="CanChange3DOsd"><screen module="UserInterfacePositioner" screen="OSD3DSetupScreen"/></item>
+					<item level="2" text="Position setup" entryID="osdsetup" requires="OsdSetup"><screen module="UserInterfacePositioner" screen="UserInterfacePositioner"/></item>
+				</menu>
+				
+			</menu>
+			<menu weight="10" text="CI-Setup" entryID="cam_setup">
+				<id val="cam" />
+				<item weight="0" level="1" text="Basic settings" entryID="ci_setup"><screen module="Ci" screen="CISetup" /></item>
+				<item weight="1" level="1" text="Common Interface" entryID="ci_setup"><screen module="Ci" screen="CiSelection" /></item>
+				<item weight="5" level="1" text="CIHelper Setup" entryID="ci_setup" requires="CIHelper"><screen module="Ci" screen="CIHelper" /></item>
+				<item weight="11" level="2" text="PBcam Server" entryID="dreamcc2" requires="DreamCC2"><plugin extensions="DreamCC2" screen="DreamCC" /></item>
+			</menu>
+			<item weight="15" level="0" text="Parental control" entryID="parental_setup"><screen module="ParentalControlSetup" screen="ParentalControlSetup" /></item>
+			<!--item level="0" text="Startwizard" entryID="startwizzard"><screen module="StartWizard" screen="StartWizard" /></item-->
+			<item weight="15" level="0" text="Factory reset" entryID="factory_reset">
+				<code>
+from Screens.FactoryReset import FactoryReset
+def msgClosed(ret):
+	if ret:
+		from os import system, _exit
+		system("rm -R /etc/enigma2")
+		system("rm -R /usr/bin/cam")
+		system("rm -R /usr/script/cam")
+		system("rm -R /usr/keys")
+		system("rm -R /etc/tuxbox/config")
+		system("mkdir /etc/enigma2")
+		system("mkdir /usr/bin/cam")
+		system("mkdir /usr/script/cam")
+		system("mkdir /usr/keys")
+		system("mkdir /etc/tuxbox/config")
+		system("cp -f /usr/share/enigma2/defaults/interfaces /etc/network/interfaces")
+		system("/etc/init.d/networking restart")
+		system("cp -R /usr/share/enigma2/defaults/enigma2 /etc")
+		_exit(0)
+self.session.openWithCallback(msgClosed, FactoryReset)
+</code>
+			</item>
+			<item weight="15" level="0" text="Software update" entryID="software_update"><screen module="SoftwareUpdate" screen="UpdatePlugin" /></item>
+		</menu>
+	<!-- Menu / Standby Restart -->
+	<menu weight="99" level="0" text="Standby / Restart" entryID="standby_restart_list">
+		<id val="shutdown" />
+		<item weight="0" level="0" text="Deep Standby" requires="DeepstandbySupport" entryID="deep_standby">
+			<code>
+from Screens.Standby import TryQuitMainloop
+from Screens.MessageBox import MessageBox
+recordings = self.session.nav.getRecordingsCheckBeforeActivateDeepStandby()
+if recordings:
+	self.session.openWithCallback(self.gotoStandby,MessageBox,_("Recording(s) are in progress or coming up in few seconds!\nEntering standby, after recording the box will shutdown."), type = MessageBox.TYPE_INFO, close_on_any_key = True, timeout = 10)
+else:
+	self.session.open(TryQuitMainloop, 1)
+</code>
+		</item>
+		<item weight="5" level="0" text="Shutdown" requires="!DeepstandbySupport" entryID="deep_standby"><screen module="Standby" screen="TryQuitMainloop">1</screen></item>
+		<item weight="6" level="0" text="MultiBoot" requires="HaveMultiBootHD" entryID="multi_boot"><screen module="MultiBootStartup" screen="MultiBootStartup" /></item>
+		<item weight="6" level="0" text="MultiBoot" requires="HaveMultiBootXC" entryID="multi_boot"><screen module="MultiBootStartupXC" screen="MultiBootStartup" /></item>
+		<item weight="6" level="0" text="MultiBoot" requires="HaveMultiBootGB" entryID="deep_standby"><screen module="MultiBootStartupGB" screen="MultiBootStartup" /></item>
+		<item weight="6" level="0" text="MultiBoot" requires="HaveMultiBootCY" entryID="deep_standby"><screen module="MultiBootStartupCY" screen="MultiBootStartup" /></item>
+		<item weight="10" level="0" text="WOL Standby" requires="GBWOL" entryID="deep_standby">
+			<code>
+from Screens.Standby import TryQuitMainloop
+from Screens.MessageBox import MessageBox
+recordings = self.session.nav.getRecordingsCheckBeforeActivateDeepStandby()
+if recordings:
+	self.session.openWithCallback(self.gotoStandby,MessageBox,_("Recording(s) are in progress or coming up in few seconds!\nEntering standby, after recording the box will shutdown."), type = MessageBox.TYPE_INFO, close_on_any_key = True, timeout = 10)
+else:
+	self.session.open(TryQuitMainloop, 45)
+</code>
+		</item>
+		<item weight="15" level="0" text="Standby" entryID="standby"><screen module="Standby" screen="Standby"/></item>
+		<item weight="20" level="0" text="Sleep Timer" requires="DeepstandbySupport" entryID="sleep"><screen module="SleepTimerEdit" screen="SleepTimerEdit" /></item>
+		<item weight="25" level="0" text="Restart" entryID="restart"><screen module="Standby" screen="TryQuitMainloop">2</screen></item>
+		<item weight="30" level="0" text="Restart enigma" entryID="restart_enigma"><screen module="Standby" screen="TryQuitMainloop">3</screen></item>
+		<item weight="35" level="0" text="Recovery Mode" requires="RecoveryMode" entryID="maintenance_mode"><screen module="Standby" screen="TryQuitMainloop">16</screen></item>
+	</menu>
+
+</menu>
