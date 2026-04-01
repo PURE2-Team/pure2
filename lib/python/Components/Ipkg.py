@@ -1,4 +1,4 @@
-import os
+from os import listdir, path, remove, system
 from enigma import eConsoleAppContainer
 from Components.Harddisk import harddiskmanager
 from Components.config import config, ConfigSubsection, ConfigYesNo
@@ -19,32 +19,32 @@ def Load_defaults():
 
 def opkgExtraDestinations():
 	global opkgDestinations
-	return ''.join([" --add-dest %s:%s" % (i,i) for i in opkgDestinations])
+	return ''.join([f" --add-dest {i}:{i}" for i in opkgDestinations])
 
 def opkgAddDestination(mountpoint):
 	global opkgDestinations
 	if mountpoint not in opkgDestinations:
 		opkgDestinations.append(mountpoint)
-		print "[Ipkg] Added to OPKG destinations:", mountpoint
+		print("[Ipkg] Added to OPKG destinations:", mountpoint)
 
 def onPartitionChange(why, part):
 	global opkgDestinations
 	global opkgStatusPath
-	mountpoint = os.path.normpath(part.mountpoint)
+	mountpoint = path.normpath(part.mountpoint)
 	if mountpoint and not mountpoint.startswith('/media/net'):
 		if why == 'add':
 			if opkgStatusPath == '':
 				# recent opkg versions
 				opkgStatusPath = 'var/lib/opkg/status'
-				if not os.path.exists(os.path.join('/', opkgStatusPath)):
+				if not path.exists(path.join('/', opkgStatusPath)):
 					# older opkg versions
 					opkgStatusPath = 'usr/lib/opkg/status'
-			if os.path.exists(os.path.join(mountpoint, opkgStatusPath)):
+			if path.exists(path.join(mountpoint, opkgStatusPath)):
 				opkgAddDestination(mountpoint)
 		elif why == 'remove':
 			try:
 				opkgDestinations.remove(mountpoint)
-				print "[Ipkg] Removed from OPKG destinations:", mountpoint
+				print("[Ipkg] Removed from OPKG destinations:", mountpoint)
 			except:
 				pass
 
@@ -87,7 +87,7 @@ class IpkgComponent:
 		self.runCmd(opkgExtraDestinations() + ' ' + cmd)
 
 	def runCmd(self, cmd):
-		print "executing", self.ipkg, cmd
+		print("executing", self.ipkg, cmd)
 		self.cmd.appClosed.append(self.cmdFinished)
 		self.cmd.dataAvail.append(self.cmdData)
 		if self.cmd.execute(self.ipkg + " " + cmd):
@@ -96,12 +96,12 @@ class IpkgComponent:
 	def startCmd(self, cmd, args = None):
 		if cmd == self.CMD_UPDATE:
 			if getImageVersion() == '4.0':
-				if os.path.exists('/var/lib/opkg/lists'):
+				if path.exists('/var/lib/opkg/lists'):
 					rmtree('/var/lib/opkg/lists')
 			else:
-				for fn in os.listdir('/var/lib/opkg'):
+				for fn in listdir('/var/lib/opkg'):
 					if fn.startswith(getImageDistro()):
-						os.remove('/var/lib/opkg/'+fn)
+						remove('/var/lib/opkg/'+fn)
 			self.runCmdEx("update")
 		elif cmd == self.CMD_UPGRADE:
 			append = ""
@@ -109,8 +109,8 @@ class IpkgComponent:
 				append = " -test"
 			if len(self.excludeList) > 0:
 				for x in self.excludeList:
-					print"[IPKG] exclude Package (hold): '%s'" % x[0]
-					os.system("opkg flag hold " + x[0])
+					print(f"[IPKG] exclude Package (hold): '{x[0]}'")
+					system("opkg flag hold " + x[0])
 			self.runCmdEx("upgrade" + append)
 		elif cmd == self.CMD_LIST:
 			self.fetchedList = []
@@ -120,7 +120,7 @@ class IpkgComponent:
 			else:
 				self.runCmd("list")
 		elif cmd == self.CMD_INSTALL:
-			self.runCmd("--force-overwrite install " + args['package'])
+			self.runCmd("--force-overwrite install --force-depends " + args['package'])
 		elif cmd == self.CMD_REMOVE:
 			self.runCmd("remove " + args['package'])
 		elif cmd == self.CMD_UPGRADE_LIST:
@@ -135,11 +135,12 @@ class IpkgComponent:
 		self.cmd.dataAvail.remove(self.cmdData)
 		if len(self.excludeList) > 0:
 			for x in self.excludeList:
-				print"[IPKG] restore Package flag (unhold): '%s'" % x[0]
-				os.system("opkg flag ok " + x[0])
+				print(f"[IPKG] restore Package flag (unhold): '{x[0]}'")
+				system("opkg flag ok " + x[0])
 
 	def cmdData(self, data):
-# 		print "data:", data
+#		print "data:", data
+		data = data.decode()
 		if self.cache is None:
 			self.cache = data
 		else:
@@ -205,9 +206,9 @@ class IpkgComponent:
 				# if we get multiple config file update questions, the next ones
 				# don't necessarily start at the beginning of a line
 				self.callCallbacks(self.EVENT_MODIFIED, data.split(' \'', 3)[1][:-1])
-		except Exception, ex:
-			print "[Ipkg] Failed to parse: '%s'" % data
-			print "[Ipkg]", ex
+		except Exception as ex:
+			print(f"[Ipkg] Failed to parse: '{data}'")
+			print("[Ipkg]", ex)
 
 	def callCallbacks(self, event, param = None):
 		for callback in self.callbackList:

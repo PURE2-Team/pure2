@@ -131,7 +131,8 @@ void eSocket::notifier(int what)
 						readbuffer.clear();
 						writebuffer.clear();
 						rsn->setRequested(rsn->getRequested()&~eSocketNotifier::Write);
-						write(getDescriptor(), "BREAK!", 6);
+						ssize_t ret = write(getDescriptor(), "BREAK!", 6);
+						if (ret < 0) eDebug("[eSocket] write failed: %m");
 						hangup();
 						return;
 					}
@@ -194,6 +195,10 @@ void eSocket::notifier(int what)
 			::getsockopt(getDescriptor(), SOL_SOCKET, SO_ERROR, &res, &size);
 			close();
 			error_(res);
+		} else
+		{
+			eWarning("[eSocket] unexpected POLLHUP in state %d on fd %d - closing to prevent busy loop", mystate, getDescriptor());
+			close();
 		}
 	}
 }
@@ -246,7 +251,8 @@ int eSocket::connectToHost(std::string hostname, int port)
 		error_(errno);
 		return(-1);
 	}
-	server=gethostbyname2(hostname.c_str(), AF_INET6);
+	// FIXME use getaddrinfo
+	server=gethostbyname2(hostname.c_str(), AF_INET6); // NOSONAR
 	if(server==NULL)
 	{
 		eDebug("[eSocket] can't resolve %s", hostname.c_str());

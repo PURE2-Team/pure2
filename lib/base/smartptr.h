@@ -26,6 +26,7 @@ public:
 		if (ptr)
 			ptr->AddRef();
 	}
+#ifndef SWIG
 	ePtr &operator=(T *c)
 	{
 		if (c)
@@ -44,6 +45,7 @@ public:
 		ptr=c.ptr;
 		return *this;
 	}
+#endif
 	~ePtr()
 	{
 		if (ptr)
@@ -57,14 +59,13 @@ public:
 	{
 		return ptr;
 	}
-
 #ifndef SWIG
 	T* grabRef() { if (!ptr) return 0; ptr->AddRef(); return ptr; }
 	T* &ptrref() { return ptr; }
 	operator bool() const { return !!this->ptr; }
+	operator T*() const { return this->ptr; }
 #endif
 	T* operator->() const { return ptr; }
-	operator T*() const { return this->ptr; }
 };
 
 
@@ -95,6 +96,7 @@ public:
 			ptr->AddUse();
 		}
 	}
+#ifndef SWIG
 	eUsePtr &operator=(T *c)
 	{
 		if (c)
@@ -125,6 +127,7 @@ public:
 		ptr=c.ptr;
 		return *this;
 	}
+#endif
 	~eUsePtr()
 	{
 		if (ptr)
@@ -136,9 +139,9 @@ public:
 #ifndef SWIG
 	T* grabRef() { if (!ptr) return 0; ptr->AddRef(); ptr->AddUse(); return ptr; }
 	T* &ptrref() { return ptr; }
+	operator T*() const { return this->ptr; }
 #endif
 	T* operator->() const { return ptr; }
-	operator T*() const { return this->ptr; }
 };
 
 

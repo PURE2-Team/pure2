@@ -1,16 +1,17 @@
-from Converter import Converter
+from Components.Converter.Converter import Converter
 from Components.Element import cached
 
-class ValueRange(Converter, object):
+
+class ValueRange(Converter):
 	def __init__(self, arg):
 		Converter.__init__(self, arg)
-		(self.lower, self.upper) = [int(x) for x in arg.split(',')]
+		(self.lower, self.upper) = (int(x) for x in arg.split(','))
 
 	@cached
 	def getBoolean(self):
 		try:
 			sourcevalue = int(self.source.value)
-		except:
+		except Exception:
 			sourcevalue = self.source.value
 		if self.lower <= self.upper:
 			return self.lower <= sourcevalue <= self.upper

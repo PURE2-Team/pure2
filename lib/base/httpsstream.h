@@ -6,7 +6,6 @@
 #include <lib/base/itssource.h>
 #include <lib/base/thread.h>
 
-#include <openssl/bio.h>
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 
@@ -24,6 +23,7 @@ class eHttpsStream: public iTsSource, public sigc::trackable, public eThread
 	size_t partialPktSz;
 	char* tmpBuf;
 	size_t tmpBufSize;
+	int startDelay;
 
 	int openUrl(const std::string &url, std::string &newurl);
 	void thread();

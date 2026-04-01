@@ -58,13 +58,13 @@ DEFINE_REF(eServiceFactoryFS)
 	// iServiceHandler
 RESULT eServiceFactoryFS::play(const eServiceReference &ref, ePtr<iPlayableService> &ptr)
 {
-	ptr=0;
+	ptr = nullptr;
 	return -1;
 }
 
 RESULT eServiceFactoryFS::record(const eServiceReference &ref, ePtr<iRecordableService> &ptr)
 {
-	ptr=0;
+	ptr = nullptr;
 	return -1;
 }
 
@@ -82,7 +82,7 @@ RESULT eServiceFactoryFS::info(const eServiceReference &ref, ePtr<iStaticService
 
 RESULT eServiceFactoryFS::offlineOperations(const eServiceReference &, ePtr<iServiceOfflineOperations> &ptr)
 {
-	ptr = 0;
+	ptr = nullptr;
 	return -1;
 }
 
@@ -178,19 +178,19 @@ RESULT eServiceFS::getContent(std::list<eServiceReference> &list, bool sorted)
 		filename = path;
 		filename += e->d_name;
 
-		struct stat s;
+		struct stat s = {};
 		if (::stat(filename.c_str(), &s) < 0)
 			continue;
 
 		if (S_ISDIR(s.st_mode) || S_ISLNK(s.st_mode))
 		{
 			filename += "/";
-			eServiceReference service(eServiceFactoryFS::id,
-				eServiceReference::isDirectory|
-				eServiceReference::canDescent|eServiceReference::mustDescent|
-				eServiceReference::shouldSort|eServiceReference::sort1,
+			eServiceReferenceFS service(eServiceFactoryFS::id,
+				eServiceReferenceFS::isDirectory|
+				eServiceReferenceFS::canDescent|eServiceReference::mustDescent|
+				eServiceReferenceFS::shouldSort|eServiceReference::sort1,
 				filename);
-			service.data[0] = 1;
+			service.data[0] = eServiceReferenceFS::directory;
 			list.push_back(service);
 		} else
 		{
@@ -208,10 +208,10 @@ RESULT eServiceFS::getContent(std::list<eServiceReference> &list, bool sorted)
 
 				if (type != -1)
 				{
-					eServiceReference service(type,
-						0,
+					eServiceReferenceFS service(type,
+						eServiceReferenceFS::noFlags,
 						filename);
-					service.data[0] = 0;
+					service.data[0] = eServiceReferenceFS::file;
 					list.push_back(service);
 				}
 			}
@@ -271,10 +271,10 @@ PyObject *eServiceFS::getContent(const char* format, bool sorted)
 					tmp = NEW_eServiceReference(ref);
 					break;
 				case 'C':  // service reference compare string
-					tmp = PyString_FromString(ref.toCompareString().c_str());
+					tmp = PyUnicode_FromString(ref.toCompareString().c_str());
 					break;
 				case 'S':  // service reference string
-					tmp = PyString_FromString(ref.toString().c_str());
+					tmp = PyUnicode_FromString(ref.toString().c_str());
 					break;
 				case 'N':  // service name
 					if (service_center)
@@ -285,11 +285,11 @@ PyObject *eServiceFS::getContent(const char* format, bool sorted)
 							std::string name;
 							sptr->getName(ref, name);
 							if (name.length())
-								tmp = PyString_FromString(name.c_str());
+								tmp = PyUnicode_FromString(name.c_str());
 						}
 					}
 					if (!tmp)
-						tmp = PyString_FromString("<n/a>");
+						tmp = PyUnicode_FromString("<n/a>");
 					break;
 				default:
 					if (tuple)

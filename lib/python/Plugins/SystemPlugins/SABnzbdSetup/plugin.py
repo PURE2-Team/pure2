@@ -1,5 +1,5 @@
-from boxbranding import getMachineBrand, getMachineName
 import time
+import sys
 
 from Screens.Screen import Screen
 from Screens.MessageBox import MessageBox
@@ -8,6 +8,7 @@ from Components.Label import Label
 from Components.Sources.StaticText import StaticText
 from Components.ActionMap import ActionMap
 from Tools.Directories import fileExists
+from Components.SystemInfo import getBoxDisplayName
 
 
 class SABnzbdSetupScreen(Screen):
@@ -30,15 +31,15 @@ class SABnzbdSetupScreen(Screen):
 
 	def __init__(self, session):
 		Screen.__init__(self, session)
-		Screen.setTitle(self, _("SABnzbd Setup"))
+		Screen.setTitle(self, _("SABnzbd Settings"))
 		self.skinName = "NetworkServiceSetup"
-		self.onChangedEntry = [ ]
-		self['lab1'] = Label(_("Autostart:"))
+		self.onChangedEntry = []
+		self['lab1'] = Label(_("Autostart") + ":")
 		self['labactive'] = Label(_(_("Disabled")))
 		self['lab2'] = Label(_("Current Status:"))
 		self['labstop'] = Label(_("Stopped"))
 		self['labrun'] = Label(_("Running"))
-		self['key_red'] = Label(_("Remove Service"))
+		self['key_red'] = Label(_("Remove %s") % "SABnzbd")
 		self['key_green'] = Label(_("Start"))
 		self['key_yellow'] = Label(_("Autostart"))
 		self['key_blue'] = Label()
@@ -48,16 +49,17 @@ class SABnzbdSetupScreen(Screen):
 		self.my_sabnzbd_active = False
 		self.my_sabnzbd_run = False
 		self['actions'] = ActionMap(['WizardActions', 'ColorActions'], {'ok': self.close, 'back': self.close, 'red': self.UninstallCheck, 'green': self.SABnzbdStartStop, 'yellow': self.activateSABnzbd})
-		self.service_name = 'sabnzbd'
+		self.service_name = ("sabnzbd3" if sys.version_info[0] >= 3 else "sabnzbd")
 		self.onLayoutFinish.append(self.InstallCheck)
 
 	def InstallCheck(self):
 		self.Console.ePopen('/usr/bin/opkg list_installed ' + self.service_name, self.InstalldataAvail)
 
 	def InstalldataAvail(self, str, retval, extra_args):
+		if isinstance(str, bytes):
+			str = str.decode(encoding='utf-8', errors='strict')
 		if not str:
-			restartbox = self.session.openWithCallback(self.InstallPackage,MessageBox,_('Your %s %s will be restarted after the installation of service.\n\nDo you want to install now ?') % (getMachineBrand(), getMachineName()), MessageBox.TYPE_YESNO)
-			restartbox.setTitle(_('Ready to install "%s" ?') % self.service_name)
+			self.session.openWithCallback(self.InstallPackage, MessageBox, _('Your %s %s will be restarted after the installation of service.\n\nDo you want to install now ?') % getBoxDisplayName(), MessageBox.TYPE_YESNO, windowTitle=_('Ready to install "%s"?') % self.service_name)
 		else:
 			self.updateService()
 
@@ -69,11 +71,10 @@ class SABnzbdSetupScreen(Screen):
 
 	def doInstall(self, callback, pkgname):
 		self["actions"].setEnabled(False)
-		self.message = self.session.open(MessageBox,_("please wait..."), MessageBox.TYPE_INFO)
-		self.message.setTitle(_('Installing Service'))
+		self.message = self.session.open(MessageBox, _("Please wait..."), MessageBox.TYPE_INFO, windowTitle=_("Installing Service"))
 		self.Console.ePopen('/usr/bin/opkg install ' + pkgname + ' sync', callback)
 
-	def installComplete(self,result = None, retval = None, extra_args = None):
+	def installComplete(self, result=None, retval=None, extra_args=None):
 		self["actions"].setEnabled(True)
 		from Screens.Standby import TryQuitMainloop
 		self.session.open(TryQuitMainloop, 2)
@@ -82,9 +83,10 @@ class SABnzbdSetupScreen(Screen):
 		self.Console.ePopen('/usr/bin/opkg list_installed ' + self.service_name, self.UninstalldataAvail)
 
 	def UninstalldataAvail(self, str, retval, extra_args):
+		if isinstance(str, bytes):
+			str = str.decode(encoding='utf-8', errors='strict')
 		if str:
-			restartbox = self.session.openWithCallback(self.RemovePackage,MessageBox,_('Your %s %s will be restarted after the removal of service\nDo you want to remove now ?') % (getMachineBrand(), getMachineName()), MessageBox.TYPE_YESNO)
-			restartbox.setTitle(_('Ready to remove "%s" ?') % self.service_name)
+			self.session.openWithCallback(self.RemovePackage, MessageBox, _("Your %s %s will be restarted after the removal of service\nDo you want to remove now?") % getBoxDisplayName(), MessageBox.TYPE_YESNO, windowTitle=_("Ready to remove \"%s\"?") % self.service_name)
 		else:
 			self.updateService()
 
@@ -94,11 +96,10 @@ class SABnzbdSetupScreen(Screen):
 
 	def doRemove(self, callback, pkgname):
 		self["actions"].setEnabled(False)
-		self.message = self.session.open(MessageBox,_("please wait..."), MessageBox.TYPE_INFO)
-		self.message.setTitle(_('Removing Service'))
+		self.message = self.session.open(MessageBox, _("Please wait..."), MessageBox.TYPE_INFO, windowTitle=_("Removing Service"))
 		self.Console.ePopen('/usr/bin/opkg remove ' + pkgname + ' --force-remove --autoremove sync', callback)
 
-	def removeComplete(self,result = None, retval = None, extra_args = None):
+	def removeComplete(self, result=None, retval=None, extra_args=None):
 		self["actions"].setEnabled(True)
 		from Screens.Standby import TryQuitMainloop
 		self.session.open(TryQuitMainloop, 2)
@@ -125,10 +126,11 @@ class SABnzbdSetupScreen(Screen):
 		time.sleep(3)
 		self.updateService()
 
-	def updateService(self,result = None, retval = None, extra_args = None):
+	def updateService(self, result=None, retval=None, extra_args=None):
 		import process
 		p = process.ProcessList()
-		sabnzbd_process = str(p.named('SABnzbd.py')).strip('[]')
+		sabnzbd_processpy = str(p.named('SABnzbd.py')).strip('[]')
+		sabnzbd_processpyc = str(p.named('SABnzbd.pyc')).strip('[]')
 		self['labrun'].hide()
 		self['labstop'].hide()
 		self['labactive'].setText(_("Disabled"))
@@ -138,25 +140,26 @@ class SABnzbdSetupScreen(Screen):
 			self['labactive'].setText(_("Enabled"))
 			self['labactive'].show()
 			self.my_sabnzbd_active = True
-		if sabnzbd_process:
+		if sabnzbd_processpy or sabnzbd_processpyc:
 			self.my_sabnzbd_run = True
 		if self.my_sabnzbd_run:
 			self['labstop'].hide()
 			self['labactive'].show()
 			self['labrun'].show()
 			self['key_green'].setText(_("Stop"))
-			status_summary= self['lab2'].text + ' ' + self['labrun'].text
+			status_summary = self['lab2'].text + ' ' + self['labrun'].text
 		else:
 			self['labrun'].hide()
 			self['labstop'].show()
 			self['labactive'].show()
 			self['key_green'].setText(_("Start"))
-			status_summary= self['lab2'].text + ' ' + self['labstop'].text
-		title = _("SABnzbd Setup")
+			status_summary = self['lab2'].text + ' ' + self['labstop'].text
+		title = _("SABnzbd Settings")
 		autostartstatus_summary = self['lab1'].text + ' ' + self['labactive'].text
 
 		for cb in self.onChangedEntry:
 			cb(title, status_summary, autostartstatus_summary)
+
 
 def Plugins(**kwargs):
 	return []

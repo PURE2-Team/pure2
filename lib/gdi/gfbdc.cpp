@@ -5,7 +5,11 @@
 
 #include <lib/gdi/accel.h>
 
+#include <algorithm>
+#include <cstring>
+
 #include <time.h>
+#include <sys/time.h>
 
 #ifdef USE_LIBVUGLES2
 #include <vuplus_gles.h>
@@ -15,13 +19,19 @@
 #include <lib/base/cfile.h>
 #endif
 
-#ifdef CONFIG_ION
+#if defined(CONFIG_ION) || defined(CONFIG_HISILICON_FB)
+#include <lib/gdi/grc.h>
+
 extern void bcm_accel_blit(
 		int src_addr, int src_width, int src_height, int src_stride, int src_format,
 		int dst_addr, int dst_width, int dst_height, int dst_stride,
 		int src_x, int src_y, int width, int height,
 		int dst_x, int dst_y, int dwidth, int dheight,
 		int pal_addr, int flags);
+#endif
+#ifdef HAVE_HISILICON_ACCEL
+extern void  dinobot_accel_register(void *p1,void *p2);
+extern void  dinibot_accel_notify(void);
 #endif
 
 gFBDC::gFBDC()
@@ -113,6 +123,29 @@ void gFBDC::setPalette()
 	fb->PutCMAP();
 }
 
+int gFBDC::getSurfaceOffset(const gUnmanagedSurface &s) const
+{
+	if (!s.data_phys)
+		return 0;
+
+	return (s.data_phys - fb->getPhysAddr()) / s.stride;
+}
+
+void gFBDC::rotateSurfaces()
+{
+	if (m_number_of_pages > 2 && surface_third.data_phys)
+	{
+		gUnmanagedSurface previously_displayed = surface_back;
+		surface_back = surface;
+		surface = surface_third;
+		surface_third = previously_displayed;
+	}
+	else if (surface_back.data_phys)
+	{
+		std::swap(surface, surface_back);
+	}
+}
+
 void gFBDC::exec(const gOpcode *o)
 {
 	switch (o->opcode)
@@ -125,6 +158,12 @@ void gFBDC::exec(const gOpcode *o)
 	}
 	case gOpcode::flip:
 	{
+#if defined(CONFIG_ION) || defined(DREAMNEXTGEN)
+		fb->setOffset(getSurfaceOffset(surface));
+
+		if (surface_back.data_phys)
+			rotateSurfaces();
+#else
 		if (surface_back.data_phys)
 		{
 			gUnmanagedSurface s(surface);
@@ -136,6 +175,7 @@ void gFBDC::exec(const gOpcode *o)
 			else
 				fb->setOffset(0);
 		}
+#endif
 		break;
 	}
 	case gOpcode::waitVSync:
@@ -166,32 +206,51 @@ void gFBDC::exec(const gOpcode *o)
 			gles_do_animation();
 		else
 			fb->blit();
+		gles_flush();
 #else
 		fb->blit();
 #endif
-#ifdef CONFIG_ION
+#if defined(CONFIG_ION)
 		if (surface_back.data_phys)
 		{
-			gUnmanagedSurface s(surface);
-			surface = surface_back;
-			surface_back = s;
+		fb->waitVSync();
+		fb->setOffset(getSurfaceOffset(surface));
 
+		rotateSurfaces();
+
+		bcm_accel_blit(
+		surface_back.data_phys, surface_back.x, surface_back.y, surface_back.stride, 0,
+		surface.data_phys, surface.x, surface.y, surface.stride,
+		0, 0, surface.x, surface.y,
+		0, 0, surface.x, surface.y,
+		0, 0);
+		}
+#elif defined(DREAMNEXTGEN)
+		if (surface_back.data_phys && surface.data)
+		{
 			fb->waitVSync();
-			if (surface.data_phys > surface_back.data_phys)
-			{
-				fb->setOffset(0);
-			}
-			else
-			{
-				fb->setOffset(surface_back.y);
-			}
+			fb->setOffset(getSurfaceOffset(surface));
+
+			rotateSurfaces();
+
+			const int copy_bytes = surface.stride * surface.y;
+			if (copy_bytes > 0)
+			std::memcpy(surface.data, surface_back.data, copy_bytes);
+		}
+#endif
+#if defined(CONFIG_HISILICON_FB)
+		if(islocked()==0)
+		{
 			bcm_accel_blit(
-				surface_back.data_phys, surface_back.x, surface_back.y, surface_back.stride, 0,
-				surface.data_phys, surface.x, surface.y, surface.stride,
+				surface.data_phys, surface.x, surface.y, surface.stride, 0,
+				surface_back.data_phys, surface_back.x, surface_back.y, surface_back.stride,
 				0, 0, surface.x, surface.y,
 				0, 0, surface.x, surface.y,
 				0, 0);
 		}
+#endif
+#ifdef HAVE_HISILICON_ACCEL
+		dinibot_accel_notify();
 #endif
 		break;
 	case gOpcode::sendShow:
@@ -203,6 +262,7 @@ void gFBDC::exec(const gOpcode *o)
 		gles_set_buffer((unsigned int *)surface.data);
 		gles_set_animation(1, o->parm.setShowHideInfo->point.x(), o->parm.setShowHideInfo->point.y(), o->parm.setShowHideInfo->size.width(), o->parm.setShowHideInfo->size.height());
 #endif
+		delete o->parm.setShowHideInfo;
 		break;
 	}
 	case gOpcode::sendHide:
@@ -214,16 +274,30 @@ void gFBDC::exec(const gOpcode *o)
 		gles_set_buffer((unsigned int *)surface.data);
 		gles_set_animation(0, o->parm.setShowHideInfo->point.x(), o->parm.setShowHideInfo->point.y(), o->parm.setShowHideInfo->size.width(), o->parm.setShowHideInfo->size.height());
 #endif
+		delete o->parm.setShowHideInfo;
 		break;
 	}
 #ifdef USE_LIBVUGLES2
+	case gOpcode::sendShowItem:
+	{
+		gles_set_buffer((unsigned int *)surface.data);
+		gles_set_animation_listbox(o->parm.setShowItemInfo->dir, o->parm.setShowItemInfo->point.x(), o->parm.setShowItemInfo->point.y(), o->parm.setShowItemInfo->size.width(), o->parm.setShowItemInfo->size.height());
+		delete o->parm.setShowItemInfo;
+		break;
+	}
+	case gOpcode::setFlush:	
+	{
+		gles_set_flush(o->parm.setFlush->enable);
+		delete o->parm.setFlush;
+		break;
+	}
 	case gOpcode::setView:
 	{
 		gles_viewport(o->parm.setViewInfo->size.width(), o->parm.setViewInfo->size.height(), fb->Stride());
+		delete o->parm.setViewInfo;
 		break;
 	}
 #endif
-
 	default:
 		gDC::exec(o);
 		break;
@@ -256,56 +330,90 @@ void gFBDC::setGamma(int g)
 
 void gFBDC::setResolution(int xres, int yres, int bpp)
 {
-#if defined(__sh__)
-	/* if xres and yres are negative call SetMode with the lates xres and yres
-	 * we need that to read the new screen dimesnions after a resolution change
-	 * without changing the frambuffer dimensions
-	 */
-	if (xres<0 && yres<0 ) {
-		fb->SetMode(surface.x, surface.y, bpp);
+	if (m_pixmap && (surface.x == xres) && (surface.y == yres) && (surface.bpp == bpp)
+	#if defined(CONFIG_HISILICON_FB)
+		&& islocked()==0
+	#endif
+		)
 		return;
-	}
-#else
-	if (m_pixmap && (surface.x == xres) && (surface.y == yres) && (surface.bpp == bpp))
-		return;
-#endif
 #ifndef CONFIG_ION
 	if (gAccel::getInstance())
 		gAccel::getInstance()->releaseAccelMemorySpace();
+#else
+	gRC *grc = gRC::getInstance();
+	if (grc)
+		grc->lock();
 #endif
 	fb->SetMode(xres, yres, bpp);
 
-#if defined(__sh__)
-	for (int y = 0; y<yres; y++) { // make whole screen transparent
-		memset(fb->lfb+y*fb->Stride(), 0x00, fb->Stride());
-	}
-#endif
+	unsigned char *base_addr = fb->lfb;
+	unsigned long base_phys = fb->getPhysAddr();
+
 	surface.x = xres;
 	surface.y = yres;
 	surface.bpp = bpp;
 	surface.bypp = bpp / 8;
 	surface.stride = fb->Stride();
-	surface.data = fb->lfb;
+	surface.data = base_addr;
+
+	for (int y=0; y<yres; y++)    // make whole screen transparent
+		memset(fb->lfb+ y * xres * 4, 0x00, xres * 4);
+
+	surface.data_phys = base_phys;
+
+	m_number_of_pages = fb->getNumPages();
+
+	int fb_page_size = surface.stride * surface.y;
+	int fb_size = fb_page_size;
 	
-	for (int y=0; y<yres; y++)    // make whole screen transparent 
-		memset(fb->lfb+ y * xres * 4, 0x00, xres * 4);	
-
-	surface.data_phys = fb->getPhysAddr();
-
-	int fb_size = surface.stride * surface.y;
-
-	if (fb->getNumPages() > 1)
+#if defined(CONFIG_ION) || defined(DREAMNEXTGEN)
+	if (m_number_of_pages > 1)
 	{
 		surface_back = surface;
-		surface_back.data = fb->lfb + fb_size;
-		surface_back.data_phys = surface.data_phys + fb_size;
-		fb_size *= 2;
+		fb_size += fb_page_size;
+
+		// the hardware starts on the first page; draw to the next one first
+		surface_back.data = base_addr;
+		surface_back.data_phys = base_phys;
+
+		surface.data = base_addr + fb_page_size;
+		surface.data_phys = base_phys + fb_page_size;
 	}
 	else
 	{
 		surface_back.data = 0;
 		surface_back.data_phys = 0;
 	}
+
+	if (m_number_of_pages > 2)
+	{
+		surface_third = surface;
+		surface_third.data = base_addr + fb_page_size * 2;
+		surface_third.data_phys = base_phys + fb_page_size * 2;
+		fb_size += fb_page_size;
+	}
+	else
+	{
+		surface_third.data = 0;
+		surface_third.data_phys = 0;
+	}
+#else
+	if (m_number_of_pages > 1)
+	{
+		surface_back = surface;
+		surface_back.data = base_addr + fb_page_size;
+		surface_back.data_phys = base_phys + fb_page_size;
+		fb_size = fb_page_size * 2;
+	}
+	else
+	{
+		surface_back.data = 0;
+		surface_back.data_phys = 0;
+	}
+
+        surface_third.data = 0;
+        surface_third.data_phys = 0;
+#endif
 
 	eDebug("[gFBDC] resolution: %d x %d x %d (stride: %d) pages: %d", surface.x, surface.y, surface.bpp, fb->Stride(), fb->getNumPages());
 
@@ -315,17 +423,34 @@ void gFBDC::setResolution(int xres, int yres, int bpp)
 	if (gAccel::getInstance())
 		gAccel::getInstance()->setAccelMemorySpace(fb->lfb + fb_size, surface.data_phys + fb_size, fb->Available() - fb_size);
 #endif
-
+#ifdef HAVE_HISILICON_ACCEL
+	dinobot_accel_register(&surface,&surface_back);
+#endif
 	if (!surface.clut.data)
 	{
 		surface.clut.colors = 256;
 		surface.clut.data = new gRGB[surface.clut.colors];
-		memset(surface.clut.data, 0, sizeof(*surface.clut.data)*surface.clut.colors);
+		memset(static_cast<void*>(surface.clut.data), 0, sizeof(*surface.clut.data)*surface.clut.colors);
 	}
 
 	surface_back.clut = surface.clut;
+	surface_third.clut = surface.clut;
+
+#if defined(CONFIG_HISILICON_FB)
+	if(islocked()==0)
+	{
+		gUnmanagedSurface s(surface);
+		surface = surface_back;
+		surface_back = s;
+	}
+#endif
 
 	m_pixmap = new gPixmap(&surface);
+
+#ifdef CONFIG_ION
+	if (grc)
+		grc->unlock();
+#endif
 }
 
 void gFBDC::saveSettings()
@@ -398,4 +523,6 @@ void setAnimation_current(int a) {
 void setAnimation_speed(int speed) {
 	CFile::writeInt("/proc/stb/fb/animation_speed", speed);
 }
+
+void setAnimation_current_listbox(int a) {}
 #endif

@@ -1,0 +1,4 @@
+[tool.ruff]
+builtins = ["_", "ngettext", "pgettext"]
+select = ["E","F","W"]
+ignore = ["W191","E501"]

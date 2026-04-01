@@ -2,15 +2,15 @@
 
 void PutToDict(ePyObject &dict, const char *key, long value)
 {
-	ePyObject item = PyInt_FromLong(value);
+	ePyObject item = PyLong_FromLong(value);
 	if (item)
 	{
 		if (PyDict_SetItemString(dict, key, item))
-			eDebug("put %s to dict failed", key);
+			eDebug("[PutToDict] put %s to dict failed", key);
 		Py_DECREF(item);
 	}
 	else
-		eDebug("could not create PyObject for %s", key);
+		eDebug("[PutToDict] could not create PyObject for %s", key);
 }
 
 void PutToDict(ePyObject &dict, const char *key, ePyObject item)
@@ -18,31 +18,31 @@ void PutToDict(ePyObject &dict, const char *key, ePyObject item)
 	if (item)
 	{
 		if (PyDict_SetItemString(dict, key, item))
-			eDebug("put %s to dict failed", key);
+			eDebug("[PutToDict] put %s to dict failed", key);
 		Py_DECREF(item);
 	}
 	else
-		eDebug("invalid PyObject for %s", key);
+		eDebug("[PutToDict] invalid PyObject for %s", key);
 }
 
 void PutToDict(ePyObject &dict, const char *key, const char *value)
 {
-	ePyObject item = PyString_FromString(value);
+	ePyObject item = PyUnicode_FromString(value);
 	if (item)
 	{
 		if (PyDict_SetItemString(dict, key, item))
-			eDebug("put %s to dict failed", key);
+			eDebug("[PutToDict] put %s to dict failed", key);
 		Py_DECREF(item);
 	}
 	else
-		eDebug("could not create PyObject for %s", key);
+		eDebug("[PutToDict] could not create PyObject for %s", key);
 }
 
 static PyObject *createTuple(int pid, const char *type)
 {
 	PyObject *r = PyTuple_New(2);
-	PyTuple_SET_ITEM(r, 0, PyInt_FromLong(pid));
-	PyTuple_SET_ITEM(r, 1, PyString_FromString(type));
+	PyTuple_SET_ITEM(r, 0, PyLong_FromLong(pid));
+	PyTuple_SET_ITEM(r, 1, PyUnicode_FromString(type));
 	return r;
 }
 
@@ -107,6 +107,10 @@ void transponderDataToDict(ePyObject &dest, ePtr<iDVBTransponderData> data)
 		if (value >= 0) PutToDict(dest, "pls_mode", value);
 		value = data->getPLSCode();
 		if (value >= 0) PutToDict(dest, "pls_code", value);
+		value = data->getT2MIPlpId();
+		if (value >= -1) PutToDict(dest, "t2mi_plp_id", value);
+		value = data->getT2MIPid();
+		if (value >= 0) PutToDict(dest, "t2mi_pid", value);
 
 		/* additional terrestrial fields */
 		value = data->getBandwidth();
@@ -132,7 +136,7 @@ void streamingDataToDict(ePyObject &dest, ePtr<iStreamData> data)
 {
 	if (dest && PyDict_Check(dest))
 	{
-		int pmt, pcr, txt, adapter, demux;
+		int pmt, pcr, txt, adapter, demux, default_audio_pid;
 		std::vector<int> video, audio, subtitle;
 		unsigned int i;
 		ePyObject l = PyList_New(0);
@@ -171,5 +175,7 @@ void streamingDataToDict(ePyObject &dest, ePtr<iStreamData> data)
 		PutToDict(dest, "adapter", adapter);
 		data->getDemuxId(demux);
 		PutToDict(dest, "demux", demux);
+		data->getDefaultAudioPid(default_audio_pid);
+		PutToDict(dest, "default_audio_pid", default_audio_pid);
 	}
 }

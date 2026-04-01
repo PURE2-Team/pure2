@@ -1,26 +1,29 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
-import subprocess,shutil,os
+import subprocess
+import shutil
+import os
 
 # MANDATORY_RIGHTS contains commands to ensure correct rights for certain files
 MANDATORY_RIGHTS = "chown -R root:root /home/root /etc/auto.network /etc/default/dropbear /etc/dropbear ; chmod 600 /etc/auto.network /etc/dropbear/* /home/root/.ssh/* ; chmod 700 /home/root /home/root/.ssh"
 
 # BLACKLISTED lists all files/folders that MUST NOT be backed up or restored in order for the image to work properly
-BLACKLISTED = ['home/root/.cache', 'etc/passwd', 'etc/shadow', 'etc/group', 'etc/samba/distro', 'etc/samba/smb.conf', 'home/root/FastRestore.log']
+BLACKLISTED = ['home/root/.cache', 'etc/passwd', 'etc/shadow', 'etc/group', 'etc/samba/distro', 'etc/samba/smb.conf', 'home/root/FastRestore.log', 'etc/enigma2/profile']
 
-IMAGE_INSTALL = ['pure2-base', 'run-postinsts']
+IMAGE_INSTALL = ['pure2-base', 'enigma2-plugin-settings-defaultsat', 'run-postinsts']
 
 PACKAGES = '/var/lib/opkg/lists'
 INSTALLEDPACKAGES = '/var/lib/opkg/status'
 
+
 def backupUserDB():
-	oldpasswd=()
-	oldshadow=()
-	oldgroups=()
-	neededgroups=[]
-	tmppasswd=[]
-	tmpgroups=[]
+	oldpasswd = ()
+	oldshadow = ()
+	oldgroups = ()
+	neededgroups = []
+	tmppasswd = []
+	tmpgroups = []
 
 	with open('/etc/passwd') as f:
 		oldpasswd = f.readlines()
@@ -46,7 +49,7 @@ def backupUserDB():
 			sname, spasswd, bullshit = y.split(':', 2)
 			if name == sname:
 				# Store hash in password field
-				passwd=spasswd
+				passwd = spasswd
 
 		# ... also search his group ...
 		for z in oldgroups:
@@ -57,7 +60,7 @@ def backupUserDB():
 					neededgroups.append(gname)
 
 				# ... add group's name after numeric gid and store his line in backup ...
-				newpwd = ":".join( ( name, passwd, uid, gid, gname, gecos, home, shell ) )
+				newpwd = ":".join((name, passwd, uid, gid, gname, gecos, home, shell))
 				tmppasswd.append(newpwd)
 
 	# Copy only needed groups into backup ...
@@ -78,17 +81,18 @@ def backupUserDB():
 		groupstxt.write("%s\n" % item)
 	groupstxt.close()
 
+
 def restoreUserDB():
 	if not (os.path.isfile('/tmp/passwd.txt') and os.path.isfile('/tmp/groups.txt')):
 		return
 
-	oldpasswd=[]
-	oldgroups=[]
-	newpasswd=[]
-	newgroups=[]
-	takenuids=[]
-	takengids=[]
-	successusers=[]
+	oldpasswd = []
+	oldgroups = []
+	newpasswd = []
+	newgroups = []
+	takenuids = []
+	takengids = []
+	successusers = []
 
 	with open('/tmp/passwd.txt') as f:
 		oldpasswd = f.readlines()
@@ -100,15 +104,15 @@ def restoreUserDB():
 
 	with open('/etc/passwd') as f:
 		newpasswd = f.readlines()
-		newpasswd = [x.strip() for x in newpasswd]
-		name, passwd, uid, gid, gecos, home, shell = x.split(':')
-		takenuids.append(uid)
+		for x in newpasswd:
+			name, passwd, uid, gid, gecos, home, shell = x.strip().split(':')
+			takenuids.append(uid)
 
 	with open('/etc/group') as f:
 		newgroups = f.readlines()
-		newgroups = [x.strip() for x in newgroups]
-		name, passwd, gid, rest = x.split(':', 3)
-		takengids.append(gid)
+		for x in newgroups:
+			name, passwd, gid, rest = x.strip().split(':', 3)
+			takengids.append(gid)
 
 	for x in oldpasswd:
 		usersuccess = False
@@ -143,12 +147,12 @@ def restoreUserDB():
 				try:
 					subprocess.check_call(cmd)
 					groupsuccess = True
-				except:
+				except Exception:
 					groupsuccess = False
 
 			# Re-create the user if the group still exists or was successfully re-created ...
 			if groupsuccess:
-				cmd = ["/bin/busybox", "adduser", "-H", "-D","-G",oldgname]
+				cmd = ["/bin/busybox", "adduser", "-H", "-D", "-G", oldgname]
 				if oldhome != "":
 					cmd.append("-h" + oldhome)
 				if oldgecos != "":
@@ -162,13 +166,13 @@ def restoreUserDB():
 				try:
 					subprocess.check_call(cmd)
 					usersuccess = True
-				except:
+				except Exception:
 					usersuccess = False
 
 		if usersuccess:
 			successusers.append([oldname, oldpasswd])
 
-	shadow=[]
+	shadow = []
 	with open('/etc/shadow') as f:
 		shadow = f.readlines()
 		shadow = [x.strip() for x in shadow]
@@ -184,12 +188,13 @@ def restoreUserDB():
 	newshadowfile.close()
 	shutil.move("/tmp/shadow.new", "/etc/shadow")
 
+
 def listpkg(type="installed"):
 	pkgs = []
 	ret = []
-	for line in open(INSTALLEDPACKAGES, 'r'):
+	for line in open(INSTALLEDPACKAGES):
 		if line.startswith('Package:'):
-			package = line.split(":",1)[1].strip()
+			package = line.split(":", 1)[1].strip()
 			version = ''
 			status = ''
 			autoinstalled = False
@@ -197,9 +202,9 @@ def listpkg(type="installed"):
 		if package is None:
 			continue
 		if line.startswith('Version:'):
-			version = line.split(":",1)[1].strip()
+			version = line.split(":", 1)[1].strip()
 		if line.startswith('Auto-Installed:'):
-			auto = line.split(":",1)[1].strip()
+			auto = line.split(":", 1)[1].strip()
 			if auto == "yes":
 				autoinstalled = True
 		elif len(line) <= 1:
@@ -219,7 +224,7 @@ def listpkg(type="installed"):
 				ret.append(package['package'])
 		elif type == "user":
 			if not package['autoinstalled']:
-				if not package['package'] in IMAGE_INSTALL:
+				if package['package'] not in IMAGE_INSTALL:
 					ret.append(package['package'])
 
 	return sorted(ret)

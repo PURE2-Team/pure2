@@ -1,6 +1,10 @@
 #ifndef __dvb_frontend_h
 #define __dvb_frontend_h
 
+#ifndef DTV_SCRAMBLING_SEQUENCE_INDEX
+#define DTV_SCRAMBLING_SEQUENCE_INDEX 70
+#endif
+
 #include <map>
 #include <lib/dvb/idvb.h>
 #include <lib/dvb/frontendparms.h>
@@ -8,6 +12,7 @@
 class eDVBFrontendParameters: public iDVBFrontendParameters
 {
 	DECLARE_REF(eDVBFrontendParameters);
+#ifndef SWIG
 	union
 	{
 		eDVBFrontendParametersSatellite sat;
@@ -18,6 +23,7 @@ class eDVBFrontendParameters: public iDVBFrontendParameters
 	int m_type;
 	int m_types;
 	int m_flags;
+#endif
 public:
 	eDVBFrontendParameters();
 	~eDVBFrontendParameters()
@@ -66,9 +72,13 @@ public:
 		NEW_ROTOR_POS,        // new rotor position (not validated)
 		ROTOR_CMD,            // completed rotor cmd (finalized)
 		ROTOR_POS,            // current rotor position
+		SAT_POSITION,                // current frontend satellite position
+		ADVANCED_LINKED_ROOT,        // number slot connected frontend
 		LINKED_PREV_PTR,      // prev double linked list (for linked FEs)
 		LINKED_NEXT_PTR,      // next double linked list (for linked FEs)
 		SATPOS_DEPENDS_PTR,   // pointer to FE with configured rotor (with twin/quattro lnb)
+		ADVANCED_SATPOSDEPENDS_ROOT, // root frontend with rotor (advanced satpos depending)
+		ADVANCED_SATPOSDEPENDS_LINK, // link to FE with configured rotor (with twin/quattro lnb, advanced satpos depending)
 		CUR_FREQ,             // current frequency
 		CUR_SYM,              // current symbolrate
 		CUR_LOF,              // current local oszillator frequency
@@ -88,16 +98,14 @@ public:
 		TAKEOVER_RELEASE,
 		NUM_DATA_ENTRIES
 	};
-	sigc::signal1<void,iDVBFrontend*> m_stateChanged;
-	enum class enumDebugOptions:uint64_t {
-		DISSABLE_ALL_DEBUG_OUTPUTS,	//prevents all debug issues with respect to this object
-		DEBUG_DELIVERY_SYSTEM,
-		NUM_DATA_ENTRIES};
+	sigc::signal<void(iDVBFrontend*)> m_stateChanged;
+
 private:
 	DECLARE_REF(eDVBFrontend);
 	bool m_simulate;
 	bool m_enabled;
 	bool m_fbc;
+	bool m_is_usbtuner;
 	eDVBFrontend *m_simulate_fe; // only used to set frontend type in dvb.cpp
 	int m_type;
 	int m_dvbid;
@@ -112,6 +120,7 @@ private:
 	bool m_rotor_mode;
 	bool m_need_rotor_workaround;
 	bool m_need_delivery_system_workaround;
+	bool m_blindscan;
 	bool m_multitype;
 	std::map<fe_delivery_system_t, int> m_modelist;
 	std::map<fe_delivery_system_t, bool> m_delsys, m_delsys_whitelist;
@@ -137,6 +146,8 @@ private:
 
 	int m_timeoutCount; // needed for timeout
 	int m_retryCount; // diseqc retry for rotor
+	int m_configRetuneNoPatEntry;
+	int m_debuglevel;
 
 	void feEvent(int);
 	void timeout();
@@ -150,23 +161,21 @@ private:
 	static int PriorityOrder;
 	static int PreferredFrontendIndex;
 
-	uint64_t m_DebugOptions;
-
 #endif
 public:
 #ifndef SWIG
-	eDVBFrontend(const char *devidenodename, int fe, int &ok, bool simulate=false, eDVBFrontend *simulate_fe=NULL);
+	eDVBFrontend(const char* devicenodename, int fe, int& ok, bool simulate = false, eDVBFrontend* simulate_fe = NULL);
 	virtual ~eDVBFrontend();
 
 	int readInputpower();
 	int getCurrentType(){return m_type;}
 	void overrideType(int type){m_type = type;} //workaraound for dvb api < 5
-	RESULT tune(const iDVBFrontendParameters &where);
+	RESULT tune(const iDVBFrontendParameters &where, bool blindscan = false);
 	RESULT prepare_sat(const eDVBFrontendParametersSatellite &, unsigned int timeout);
 	RESULT prepare_cable(const eDVBFrontendParametersCable &);
 	RESULT prepare_terrestrial(const eDVBFrontendParametersTerrestrial &);
 	RESULT prepare_atsc(const eDVBFrontendParametersATSC &);
-	RESULT connectStateChange(const sigc::slot1<void,iDVBFrontend*> &stateChange, ePtr<eConnection> &connection);
+	RESULT connectStateChange(const sigc::slot<void(iDVBFrontend*)> &stateChange, ePtr<eConnection> &connection);
 	RESULT getState(int &state);
 	RESULT setTone(int tone);
 	RESULT setVoltage(int voltage);
@@ -178,14 +187,17 @@ public:
 	RESULT getData(int num, long &data);
 	RESULT setData(int num, long val);
 	bool changeType(int type);
+	void checkRetune();
+	void retune();
+	void setConfigRetuneNoPatEntry(int value);
 
 	int readFrontendData(int type); // iFrontendInformation_ENUMS
 	void getFrontendStatus(ePtr<iDVBFrontendStatus> &dest);
 	void getTransponderData(ePtr<iDVBTransponderData> &dest, bool original);
 	void getFrontendData(ePtr<iDVBFrontendData> &dest);
 
-	bool isPreferred(int preferredFrontend, int slotid);
-	int isCompatibleWith(ePtr<iDVBFrontendParameters> &feparm);
+	static bool isPreferred(int preferredFrontend, int slotid);
+	int isCompatibleWith(ePtr<iDVBFrontendParameters> &feparm, bool is_configured_sat = false);
 	int getDVBID() { return m_dvbid; }
 	int getSlotID() { return m_slotid; }
 	bool setSlotInfo(int id, const char *descr, bool enabled, bool isDVBS2, int frontendid);
@@ -195,9 +207,9 @@ public:
 	static int getPreferredFrontend() { return PreferredFrontendIndex; }
 #endif
 	static const int preferredFrontendScore = 100000;
-	static const int preferredFrontendBinaryMode = 0x4000;
-	static const int preferredFrontendPrioForced = 0x2000;
-	static const int preferredFrontendPrioHigh   = 0x1000;
+	static const int preferredFrontendBinaryMode = 0x40000000;
+	static const int preferredFrontendPrioForced = 0x20000000;
+	static const int preferredFrontendPrioHigh   = 0x10000000;
 #ifndef SWIG
 	bool supportsDeliverySystem(const fe_delivery_system_t &sys, bool obeywhitelist);
 	void setDeliverySystemWhitelist(const std::vector<fe_delivery_system_t> &whitelist, bool append=false);
@@ -208,16 +220,16 @@ public:
 	int openFrontend();
 	int closeFrontend(bool force=false, bool no_delayed=false);
 	const char *getDescription() const { return m_description; }
-	bool is_simulate() const { return m_simulate; }
 	const dvb_frontend_info getFrontendInfo() const { return fe_info; }
 	const dvb_frontend_info getFrontendInfo(fe_delivery_system_t delsys)  { return m_fe_info[delsys]; }
+	bool is_simulate() const { return m_simulate; }
 	bool is_FBCTuner() { return m_fbc; }
 	void setFBCTuner(bool enable) { m_fbc = enable; }
 	bool getEnabled() { return m_enabled; }
 	void setEnabled(bool enable) { m_enabled = enable; }
+	void setUSBTuner(bool yesno) { m_is_usbtuner = yesno; }
 	bool is_multistream();
 	std::string getCapabilities();
-	std::string getCapabilities(fe_delivery_system_t delsys);
 	bool has_prev() { return (m_data[LINKED_PREV_PTR] != -1); }
 	bool has_next() { return (m_data[LINKED_NEXT_PTR] != -1); }
 

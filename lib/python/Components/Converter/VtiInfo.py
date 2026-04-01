@@ -2,9 +2,10 @@ from Components.config import config
 from Components.Converter.Converter import Converter
 from enigma import iServiceInformation, iPlayableService
 from Components.Element import cached
-from Poll import Poll
+from Components.Converter.Poll import Poll
 
-class VtiInfo(Poll, Converter, object):
+
+class VtiInfo(Poll, Converter):
     ECMINFO = 1
     ONLINETEST = 21
     TEMPINFO = 22
@@ -115,15 +116,13 @@ class VtiInfo(Poll, Converter, object):
             if frontendInfo:
                 try:
                     ecmpath = '/tmp/ecm%s.info' % frontendInfo.getAll(False).get('tuner_number')
-                    ecmopenfile = open(ecmpath, 'rb')
-                    ecm = ecmopenfile.readlines()
-                    ecmopenfile.close()
-                except:
+                    with open(ecmpath, 'rb') as fd:
+                        ecm = fd.readlines()
+                except Exception:
                     try:
-                        ecmopenfile = open('/tmp/ecm.info', 'rb')
-                        ecm = ecmopenfile.readlines()
-                        ecmopenfile.close()
-                    except:
+                        with open('/tmp/ecm.info', 'rb') as fd:
+                            ecm = fd.readlines()
+                    except OSError:
                         pass
 
             if ecm:
@@ -135,54 +134,52 @@ class VtiInfo(Poll, Converter, object):
                         item = line.split(':', 1)
                         if len(item) > 1:
                             info[item[0].strip().lower()] = item[1].strip()
-                        elif not info.has_key('caid'):
+                        elif 'caid' not in info:
                             x = line.lower().find('caid')
                             if x != -1:
                                 y = line.find(',')
                                 if y != -1:
                                     info['caid'] = line[x + 5:y]
 
+                if info and info.get("from") and config.softcam.hideServerName.value:
+                    info["from"] = "".join(["\u2022"] * len(info.get("from")))
         return info
 
     def tempfile(self):
         temp = ''
         unit = ''
         try:
-            f = open('/proc/stb/sensors/temp0/value', 'rb')
-            temp = f.readline().strip()
-            f.close()
-            f = open('/proc/stb/sensors/temp0/unit', 'rb')
-            unit = f.readline().strip()
-            f.close()
-            tempinfo = 'TEMP: ' + str(temp) + ' \xc2\xb0' + str(unit)
+            with open('/proc/stb/sensors/temp0/value', 'rb') as fd:
+                temp = fd.readline().strip()
+            with open('/proc/stb/sensors/temp0/unit', 'rb') as fd:
+                unit = fd.readline().strip()
+            tempinfo = 'TEMP: %s %s%s' % (str(temp), "\u00B0", str(unit))
             return tempinfo
-        except:
+        except Exception:
             pass
 
     def fanfile(self):
         fan = ''
         try:
-            f = open('/proc/stb/fp/fan_speed', 'rb')
-            fan = f.readline().strip()
-            f.close()
-            faninfo = 'FAN: ' + str(fan)
+            with open('/proc/stb/fp/fan_speed', 'rb') as fd:
+                fan = fd.readline().strip()
+            faninfo = f'FAN: {fan}'
             return faninfo
-        except:
+        except OSError:
             pass
 
     def pingtest(self):
         pingpath = '/tmp/.pingtest.info'
         try:
-            pingfile = open(pingpath, 'rb')
-            pingtestresult = pingfile.readlines()
-            pingfile.close()
-        except:
+            with open(pingpath, 'rb') as fd:
+                pingtestresult = fd.readlines()
+        except OSError:
             pingtestresult = None
 
         if pingtestresult is not None:
             for line in pingtestresult:
                 x = line.lower().find('0')
-                print x
+                print(x)
                 if x == 0:
                     pingtestresult = 0
                 else:

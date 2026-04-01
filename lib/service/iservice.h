@@ -4,6 +4,7 @@
 #include <lib/python/swig.h>
 #include <lib/python/python.h>
 #include <lib/base/object.h>
+#include <lib/base/estring.h>
 #include <string>
 #include <connection.h>
 #include <list>
@@ -16,17 +17,26 @@ class eServiceReference
 public:
 	enum
 	{
-		idInvalid=-1,
-		idStructure,	// service_id == 0 is root
-		idDVB,
-		idFile,
-		idUser=0x1000,
-		idServiceMP3=0x1001
+		idServiceIsScrambled  = 0x0100,				//  256  Added to normal id to indicate scrambling
+		idInvalid             = -1,
+		idStructure           = 0x0000,				//    0 service_id == 0 is root
+		idDVB                 = 0x0001,				//    1
+		idFile                = 0x0002,				//    2
+		idServiceM2TS         = 0x0003,				//    3
+		idDVBScrambled        = idDVB + idServiceIsScrambled,	//  257/0x0101
+		idUser                = 0x1000,				// 4096
+		idServiceMP3          = 0x1001,				// 4097
+		idServiceAirPlay      = 0x1009,				// 4105
+		idServiceXINE         = 0x1010,				// 4112
+		idServiceDVD          = 0x1111,				// 4369
+		idServiceAzBox        = 0x1112,                         // 4370
+		idServiceHDMIIn       = 0x2000,				// 8192
 	};
 	int type;
 
 	enum
 	{
+		noFlags=0,
 		isDirectory=1,		// SHOULD enter  (implies mustDescent)
 		mustDescent=2,		// cannot be played directly - often used with "isDirectory" (implies canDescent)
 		/*
@@ -50,12 +60,21 @@ public:
 
 	inline int getSortKey() const { return (flags & hasSortKey) ? data[3] : ((flags & sort1) ? 1 : 0); }
 
+	static RESULT parseNameAndProviderFromName(std::string &sourceName, std::string& name, std::string& prov);
+
 #ifndef SWIG
 	int data[8];
 	std::string path;
+	std::string alternativeurl;
+	std::string suburi;
+	bool isStreamRelay = false;
 #endif
 	std::string getPath() const { return path; }
 	void setPath( const std::string &n ) { path=n; }
+	void setAlternativeUrl( const std::string &n, bool isSR = false ) { alternativeurl=n; isStreamRelay=isSR; }
+	void setSubUri( const std::string &n ) { suburi=n; }
+	bool getIsStreamRelay() const { return isStreamRelay; }
+	std::string getAlternativeUrl() const { return alternativeurl; }
 
 	unsigned int getUnsignedData(unsigned int num) const
 	{
@@ -87,10 +106,13 @@ public:
 // real existing service ( for dvb eServiceDVB )
 #ifndef SWIG
 	std::string name;
+	std::string prov;
 	int number;
 #endif
 	std::string getName() const { return name; }
+	std::string getProvider() const { return prov; }
 	void setName( const std::string &n ) { name=n; }
+	void setProvider( const std::string &s ) { prov=s; }
 	int getChannelNum() const { return number; }
 	void setChannelNum(const int n) { number = n; }
 
@@ -100,7 +122,6 @@ public:
 		memset(data, 0, sizeof(data));
 		number = 0;
 	}
-#ifndef SWIG
 	eServiceReference(int type, int flags)
 		: type(type), flags(flags)
 	{
@@ -152,22 +173,29 @@ public:
 		data[4]=data4;
 		number = 0;
 	}
+	eServiceReference(int type, int flags, const std::string &path)
+		: type(type), flags(flags), path(path)
+	{
+		memset(data, 0, sizeof(data));
+		number = 0;
+	}
+#ifdef SWIG
+	eServiceReference(const eServiceReference &ref);
+#endif
+	eServiceReference(const std::string &string);
+	std::string toString() const;
+	std::string toCompareString() const;
+	std::string toReferenceString() const;
+	std::string toLCNReferenceString(bool trailing=true) const;
+#ifndef SWIG
 	operator bool() const
 	{
 		return valid();
 	}
 #endif
-	eServiceReference(int type, int flags, const std::string &path)
-		: type(type), flags(flags), path(path)
-	{
-		memset(data, 0, sizeof(data));
-	}
-	eServiceReference(const std::string &string);
-	std::string toString() const;
-	std::string toCompareString() const;
 	bool operator==(const eServiceReference &c) const
 	{
-		if (type != c.type)
+		if (!c || type != c.type)
 			return 0;
 		return (memcmp(data, c.data, sizeof(int)*8)==0) && (path == c.path);
 	}
@@ -177,6 +205,8 @@ public:
 	}
 	bool operator<(const eServiceReference &c) const
 	{
+		if (!c) return 0;
+
 		if (type < c.type)
 			return 1;
 
@@ -392,6 +422,12 @@ public:
 		sHideVBI,
 		sCenterDVBSubs,
 
+		sGamma,
+		sVideoInfo,
+		sExtendedDescription,
+		sIsRecoveringStream,
+		sIsSoftCSA,			/* 1 if current service uses software descrambling */
+
 		sUser = 0x100
 	};
 	enum {
@@ -427,7 +463,7 @@ public:
 	virtual ePtr<iServiceInfoContainer> getInfoObject(int w);
 	virtual ePtr<iDVBTransponderData> getTransponderData();
 	virtual void getAITApplications(std::map<int, std::string> &aitlist) {};
-	virtual PyObject *getHbbTVApplications() {};
+	virtual PyObject *getHbbTVApplications() {return getHbbTVApplications();};  // NOSONAR
 	virtual void getCaIds(std::vector<int> &caids, std::vector<int> &ecmpids, std::vector<std::string> &ecmdatabytes);
 	virtual long long getFileSize();
 
@@ -451,6 +487,7 @@ public:
 		syncState,
 		frontendNumber,
 		signalQualitydB,
+		isUsbTuner,
 		frontendStatus,
 		snrValue,
 		frequency,
@@ -644,13 +681,26 @@ public:
 
 	virtual int isTimeshiftActive()=0;
 	virtual int isTimeshiftEnabled()=0;
-			/* this essentially seeks to the relative end of the timeshift buffer */
+			/* this essentially seeks to the relative end of the time shift buffer */
 	virtual RESULT activateTimeshift()=0;
 	virtual RESULT saveTimeshiftFile()=0;
 	virtual std::string getTimeshiftFilename()=0;
 	virtual void switchToLive()=0;
 };
 SWIG_TEMPLATE_TYPEDEF(ePtr<iTimeshiftService>, iTimeshiftServicePtr);
+
+SWIG_IGNORE(iTapService);
+class iTapService: public iObject
+{
+#ifdef SWIG
+	iTapService();
+	~iTapService();
+#endif
+public:
+	virtual bool startTapToFD(int fd, const std::vector<int> &pids, int packetsize = 188)=0;
+	virtual void stopTapToFD()=0;
+};
+SWIG_TEMPLATE_TYPEDEF(ePtr<iTapService>, iTapServicePtr);
 
 	/* not related to eCueSheet */
 
@@ -684,6 +734,7 @@ class PyList;
 struct eDVBTeletextSubtitlePage;
 struct eDVBSubtitlePage;
 struct ePangoSubtitlePage;
+struct eVobSubtitlePage;
 class eRect;
 class gRegion;
 class gPixmap;
@@ -695,6 +746,7 @@ public:
 	virtual void setPage(const eDVBTeletextSubtitlePage &p) = 0;
 	virtual void setPage(const eDVBSubtitlePage &p) = 0;
 	virtual void setPage(const ePangoSubtitlePage &p) = 0;
+	virtual void setPage(const eVobSubtitlePage &p) = 0;
 	virtual void setPixmap(ePtr<gPixmap> &pixmap, gRegion changed, eRect dest) = 0;
 	virtual void destroy() = 0;
 };
@@ -709,6 +761,7 @@ public:
 		int page_number;
 		int magazine_number;
 		std::string language_code;
+		std::string title;
 	};
 
 	virtual RESULT enableSubtitles(iSubtitleUser *user, SubtitleTrack &track) = 0;
@@ -818,6 +871,7 @@ public:
 	virtual SWIG_VOID(RESULT) getAdapterId(int &result) const = 0;
 	virtual SWIG_VOID(RESULT) getDemuxId(int &result) const = 0;
 	virtual SWIG_VOID(RESULT) getCaIds(std::vector<int> &caids, std::vector<int> &ecmpids, std::vector<std::string> &ecmdatabytes) const = 0;
+	virtual SWIG_VOID(RESULT) getDefaultAudioPid(int &result) const = 0;
 };
 
 class iStreamableService: public iObject
@@ -931,6 +985,14 @@ public:
 
 		evHBBTVInfo,
 
+		evVideoGammaChanged,
+
+		evFccFailed,
+
+		evUpdateTags,
+		evUpdateIDv3Cover,
+		evGstreamerStart,
+
 		evUser = 0x100
 	};
 };
@@ -945,7 +1007,9 @@ class iPlayableService: public iPlayableService_ENUMS, public iObject
 	friend class iServiceHandler;
 public:
 #ifndef SWIG
-	virtual RESULT connectEvent(const sigc::slot2<void,iPlayableService*,int> &event, ePtr<eConnection> &connection)=0;
+
+	virtual RESULT connectEvent(const sigc::slot<void(iPlayableService*,int)> &event, ePtr<eConnection> &connection)=0;
+
 #endif
 	virtual RESULT start()=0;
 	virtual RESULT stop()=0;
@@ -959,6 +1023,7 @@ public:
 	virtual SWIG_VOID(RESULT) subServices(ePtr<iSubserviceList> &SWIG_OUTPUT)=0;
 	virtual SWIG_VOID(RESULT) frontendInfo(ePtr<iFrontendInformation> &SWIG_OUTPUT)=0;
 	virtual SWIG_VOID(RESULT) timeshift(ePtr<iTimeshiftService> &SWIG_OUTPUT)=0;
+	virtual SWIG_VOID(RESULT) tap(ePtr<iTapService> &SWIG_OUTPUT)=0;
 	virtual SWIG_VOID(RESULT) cueSheet(ePtr<iCueSheet> &SWIG_OUTPUT)=0;
 	virtual SWIG_VOID(RESULT) subtitle(ePtr<iSubtitleOutput> &SWIG_OUTPUT)=0;
 	virtual SWIG_VOID(RESULT) audioDelay(ePtr<iAudioDelay> &SWIG_OUTPUT)=0;
@@ -988,8 +1053,11 @@ public:
 		evRecordFailed,
 		evRecordWriteError,
 		evNewEventInfo,
+		evTuneStart,
+		evPvrTuneStart,
 		evRecordAborted,
 		evGstRecordEnded,
+		evPvrEof,
 	};
 	enum {
 		NoError=0,
@@ -1000,6 +1068,7 @@ public:
 		errTuneFailed=-255,
 		errMisconfiguration = -256,
 		errNoResources = -257,
+		errNoCiConnected = -258,
 	};
 };
 
@@ -1012,7 +1081,7 @@ class iRecordableService: public iRecordableService_ENUMS, public iObject
 #endif
 public:
 #ifndef SWIG
-	virtual RESULT connectEvent(const sigc::slot2<void,iRecordableService*,int> &event, ePtr<eConnection> &connection)=0;
+	virtual RESULT connectEvent(const sigc::slot<void(iRecordableService*,int)> &event, ePtr<eConnection> &connection)=0;
 #endif
 	virtual SWIG_VOID(RESULT) getError(int &SWIG_OUTPUT)=0;
 	virtual RESULT prepare(const char *filename, time_t begTime=-1, time_t endTime=-1, int eit_event_id=-1, const char *name=0, const char *descr=0, const char *tags=0, bool descramble = true, bool recordecm = false, int packetsize = 188)=0;
@@ -1022,6 +1091,7 @@ public:
 	virtual SWIG_VOID(RESULT) frontendInfo(ePtr<iFrontendInformation> &SWIG_OUTPUT)=0;
 	virtual SWIG_VOID(RESULT) stream(ePtr<iStreamableService> &SWIG_OUTPUT)=0;
 	virtual SWIG_VOID(RESULT) subServices(ePtr<iSubserviceList> &SWIG_OUTPUT)=0;
+	virtual SWIG_VOID(RESULT) getServiceType(int &SWIG_OUTPUT)=0;
 	virtual SWIG_VOID(RESULT) getFilenameExtension(std::string &SWIG_OUTPUT)=0;
 };
 SWIG_TEMPLATE_TYPEDEF(ePtr<iRecordableService>, iRecordableServicePtr);

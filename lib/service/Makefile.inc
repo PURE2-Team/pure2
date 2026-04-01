@@ -6,9 +6,11 @@ service_libenigma_service_a_CXXFLAGS = \
 service_libenigma_service_a_SOURCES = \
 	service/event.cpp \
 	service/listboxservice.cpp \
+	service/elistboxservicecontent.cpp \
 	service/service.cpp \
 	service/servicedvb.cpp \
 	service/servicedvbrecord.cpp \
+	service/servicedvbfcc.cpp \
 	service/servicefs.cpp \
 	service/servicemp3.cpp \
 	service/servicemp3record.cpp \
@@ -17,16 +19,20 @@ service_libenigma_service_a_SOURCES = \
 	service/servicehdmi.cpp \
 	service/servicepeer.cpp \
 	service/servicets.cpp \
-	service/servicewebts.cpp
+	service/servicewebts.cpp \
+	service/servicedvbsoftdecoder.cpp
 
 serviceincludedir = $(pkgincludedir)/lib/service
 serviceinclude_HEADERS = \
 	service/event.h \
 	service/iservice.h \
+	service/iservicescrambled.h \
 	service/listboxservice.h \
+	service/elistboxservicecontent.h \
 	service/service.h \
 	service/servicedvb.h \
 	service/servicedvbrecord.h \
+	service/servicedvbfcc.h \
 	service/servicefs.h \
 	service/servicemp3.h \
 	service/servicemp3record.h \
@@ -35,7 +41,8 @@ serviceinclude_HEADERS = \
 	service/servicehdmi.h \
 	service/servicepeer.h \
 	service/servicets.h \
-	service/servicewebts.h
+	service/servicewebts.h \
+	service/servicedvbsoftdecoder.h
 
 if HAVE_LIBXINE
 service_libenigma_service_a_SOURCES += \

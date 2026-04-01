@@ -1,4 +1,6 @@
 #include <lib/service/servicedvbrecord.h>
+#include <lib/dvb/csasession.h>
+#include <lib/dvb/cahandler.h>
 #include <lib/base/eerror.h>
 #include <lib/dvb/db.h>
 #include <lib/dvb/epgcache.h>
@@ -22,6 +24,7 @@ eDVBServiceRecord::eDVBServiceRecord(const eServiceReferenceDVB &ref, bool isstr
 	m_record_ecm = false;
 	m_packet_size = 188;
 	m_descramble = true;
+	m_pvr_descramble = false;
 	m_is_stream_client = isstreamclient;
 	m_is_pvr = !m_ref.path.empty() && !m_is_stream_client;
 	m_tuned = 0;
@@ -30,6 +33,16 @@ eDVBServiceRecord::eDVBServiceRecord(const eServiceReferenceDVB &ref, bool isstr
 	m_streaming = 0;
 	m_simulate = false;
 	m_last_event_id = -1;
+	m_serviceType = eDVBServicePMTHandler::recording;
+
+	// Software descrambling initialization
+	m_use_software_descramble = false;
+}
+
+eDVBServiceRecord::~eDVBServiceRecord()
+{
+	// Ensure clean shutdown
+	stop();
 }
 
 void eDVBServiceRecord::serviceEvent(int event)
@@ -63,10 +76,16 @@ void eDVBServiceRecord::serviceEvent(int event)
 	}
 	case eDVBServicePMTHandler::eventNewProgramInfo:
 	{
+		// eDebug("[eDVBServiceRecord] eventNewProgramInfo m_state=%d / m_want_record=%d / m_pvr_descramble=%d", m_state, m_want_record, m_pvr_descramble);
 		if (m_state == stateIdle)
 			doPrepare();
 		else if (m_want_record) /* doRecord can be called from Prepared and Recording state */
-			doRecord();
+		{
+			if (m_pvr_descramble)
+				updateDecoder();
+			else
+				doRecord();
+		}
 		m_event((iRecordableService*)this, evNewProgramInfo);
 		break;
 	}
@@ -78,10 +97,19 @@ void eDVBServiceRecord::serviceEvent(int event)
 		m_error = errNoResources;
 		m_event((iRecordableService*)this, evTuneFailed);
 		break;
+	case eDVBServicePMTHandler::eventEOF:
+		m_event((iRecordableService*)this, evPvrEof);
+		break;
 	case eDVBServicePMTHandler::eventStopped:
 		/* recording data source has stopped, stop recording */
 		stop();
 		m_event((iRecordableService*)this, evRecordAborted);
+		break;
+	case eDVBServicePMTHandler::eventStartPvrDescramble:
+		if (m_want_record)
+		{
+			doRecord();
+		}
 		break;
 	}
 }
@@ -94,8 +122,20 @@ RESULT eDVBServiceRecord::prepare(const char *filename, time_t begTime, time_t e
 	m_filename = filename;
 	m_streaming = 0;
 	m_descramble = config_recording_never_decrypt ? false : descramble;
+	bool write_descramble = m_descramble; // remember descramble flag to fix icam recordings
 	m_record_ecm = config_recording_always_ecm ? true : recordecm;
+
+	// force descramble for _pvrdesc.ts
+	if (strstr(filename, "_pvrdesc.ts"))
+	{
+		m_pvr_descramble = true;
+		m_descramble = true;
+		m_record_ecm = false;
+		write_descramble = true;
+	}
 	m_packet_size = packetsize;
+
+	eTrace("[eDVBServiceRecord] prepare filename %s / m_record_ecm = %d / m_descramble = %d / m_pvr_descramble = %d", filename, m_record_ecm, m_descramble, m_pvr_descramble);
 
 	if (m_state == stateIdle)
 	{
@@ -137,7 +177,7 @@ RESULT eDVBServiceRecord::prepare(const char *filename, time_t begTime, time_t e
 				meta.m_description = descr;
 			if (tags)
 				meta.m_tags = tags;
-			meta.m_scrambled = !m_descramble;
+			meta.m_scrambled = !write_descramble;
 			meta.m_packet_size = m_packet_size;
 			ret = meta.updateMeta(filename) ? -255 : 0;
 			if (!ret)
@@ -177,10 +217,33 @@ RESULT eDVBServiceRecord::stop()
 {
 	if (!m_simulate)
 		eDebug("[eDVBServiceRecord] stop recording!");
+
+	// Stop the recorder thread FIRST to prevent race condition:
+	// The thread accesses m_serviceDescrambler without synchronization,
+	// so we must ensure it's not running before we release the CSA session.
+	if (m_state == stateRecording && m_record)
+	{
+		m_record->stop();
+	}
+
+	// Now safe to remove descrambler and release session
+	if (m_csa_session && m_record)
+	{
+		eDebug("[eDVBServiceRecord] Removing CSA session from recorder");
+		m_record->setDescrambler(nullptr);
+	}
+
+	// Free CSA session if used
+	if (m_csa_session)
+	{
+		eDebug("[eDVBServiceRecord] Releasing CSA session");
+		m_csa_session = nullptr;
+		m_use_software_descramble = false;
+	}
+
+	// Recording already stopped above
 	if (m_state == stateRecording)
 	{
-		if (m_record)
-			m_record->stop();
 		if (m_target_fd >= 0)
 		{
 			::close(m_target_fd);
@@ -203,21 +266,22 @@ RESULT eDVBServiceRecord::stop()
 
 int eDVBServiceRecord::doPrepare()
 {
-		/* allocate a ts recorder if we don't already have one. */
+	/* allocate a ts recorder if we don't already have one. */
+	eTrace("[eDVBServiceRecord] doPrepare m_ref %s", m_ref.toString().c_str());
+
 	if (m_state == stateIdle)
 	{
-		eDVBServicePMTHandler::serviceType servicetype;
 
 		if(tryFallbackTuner(/*REF*/m_ref, /*REF*/m_is_stream_client, m_is_pvr, m_simulate))
 			eDebug("[eDVBServiceRecord] fallback tuner selected");
 
 		if (m_streaming)
 		{
-			servicetype = m_record_ecm ? eDVBServicePMTHandler::scrambled_streamserver : eDVBServicePMTHandler::streamserver;
+			m_serviceType = m_record_ecm ? eDVBServicePMTHandler::scrambled_streamserver : eDVBServicePMTHandler::streamserver;
 		}
 		else
 		{
-			servicetype = m_record_ecm ? eDVBServicePMTHandler::scrambled_recording : eDVBServicePMTHandler::recording;
+			m_serviceType = m_record_ecm ? eDVBServicePMTHandler::scrambled_recording : eDVBServicePMTHandler::recording;
 		}
 		m_pids_active.clear();
 		m_state = statePrepared;
@@ -233,16 +297,17 @@ int eDVBServiceRecord::doPrepare()
 				/*
 				* streams are considered to be descrambled by default;
 				* user can indicate a stream is scrambled, by using servicetype id + 0x100
+				* (or idDVB + idServiceIsScrambled == idDVBScrambled)
 				*/
 				bool config_descramble_client = eConfigManager::getConfigBoolValue("config.streaming.descramble_client", false);
 
-				m_descramble = (m_ref.type == eServiceFactoryDVB::id + 0x100);
+				m_descramble = (m_ref.type == eServiceReference::idDVBScrambled);
 
 				if(config_descramble_client)
 					m_descramble = true;
 
 				m_record_ecm = false;
-				servicetype = eDVBServicePMTHandler::streamclient;
+				m_serviceType = eDVBServicePMTHandler::streamclient;
 				eHttpStream *f = new eHttpStream();
 				f->open(m_ref.path.c_str());
 				source = ePtr<iTsSource>(f);
@@ -260,14 +325,78 @@ int eDVBServiceRecord::doPrepare()
 					packetsize = meta.m_packet_size;
 					m_descramble = meta.m_scrambled;
 				}
-				servicetype = eDVBServicePMTHandler::offline;
+				if(m_pvr_descramble)
+				{
+					m_serviceType = eDVBServicePMTHandler::pvrDescramble;
+				}
+				else
+				{
+					m_serviceType = eDVBServicePMTHandler::offline;
+				}
 				eRawFile *f = new eRawFile(packetsize);
 				f->open(m_ref.path.c_str());
 				source = ePtr<iTsSource>(f);
 			}
+			m_event((iRecordableService*)this, evPvrTuneStart);
 		}
-		return m_service_handler.tuneExt(m_ref, source, m_ref.path.c_str(), 0, m_simulate, NULL, servicetype, m_descramble);
+		else
+		{
+			m_event((iRecordableService*)this, evTuneStart);
+		}
+
+		eTrace("[eDVBServiceRecord] doPrepare m_ref:%s / m_simulate:%d / m_serviceType:%d / m_is_stream_client:%d / m_descramble:%d / m_pvr_descramble:%d", m_ref.path.c_str(), m_simulate, m_serviceType, m_is_stream_client, m_descramble, m_pvr_descramble);
+
+		return m_service_handler.tuneExt(m_ref, source, m_ref.path.c_str(), 0, m_simulate, NULL, m_serviceType, m_descramble);
 	}
+	return 0;
+}
+
+// Called to setup software descrambling for recording
+int eDVBServiceRecord::setupSoftwareDescrambler(eDVBServicePMTHandler::program& program)
+{
+	eDebug("[eDVBServiceRecord] Setting up CSA session for recording");
+
+	// Create session for recording (no decoder needed)
+	eServiceReferenceDVB ref(m_ref);
+	m_csa_session = new eDVBCSASession(ref);
+	if (!m_csa_session)
+	{
+		eWarning("[eDVBServiceRecord] Failed to create CSA session");
+		return -1;
+	}
+
+	// Initialize session - connects to CAHandler for CW reception
+	if (!m_csa_session->init())
+	{
+		eWarning("[eDVBServiceRecord] Failed to initialize CSA session");
+		m_csa_session = nullptr;
+		return -2;
+	}
+
+	// Start ECM monitor for CSA-ALT detection and ecm_mode extraction
+	// This is needed for timer recordings where no Live-TV is running
+	if (!program.caids.empty())
+	{
+		ePtr<iDVBDemux> demux;
+		if (m_service_handler.getDataDemux(demux) == 0 && demux)
+		{
+			uint16_t ecm_pid = program.caids.front().capid;
+			uint16_t caid = program.caids.front().caid;
+			eDebug("[eDVBServiceRecord] Requesting ECM monitor on PID %d, CAID 0x%04X", ecm_pid, caid);
+			m_csa_session->startECMMonitor(demux, ecm_pid, caid);
+		}
+	}
+
+	// Activate session immediately - recording can't wait for ECM analysis
+	// If cache has CSA-ALT info, ecm_mode will be used from cache
+	// Otherwise default ecm_mode is used until first ECM arrives
+	m_csa_session->forceActivate();
+
+	eDebug("[eDVBServiceRecord] CSA session activated for recording");
+
+	// No startup buffering for recording (data goes directly to file)
+
+	m_use_software_descramble = true;
 	return 0;
 }
 
@@ -286,6 +415,21 @@ int eDVBServiceRecord::doRecord()
 
 	if (!m_record && m_tuned && !m_streaming && !m_simulate)
 	{
+		if (m_pvr_descramble)
+		{
+			if (m_service_handler.isPmtReady())
+			{
+				if (!m_service_handler.isCiConnected())
+				{
+					m_event((iRecordableService*)this, evRecordFailed);
+					return errNoCiConnected;
+				}
+			}
+			else
+			{
+				return 0;
+			}
+		}
 		eDebug("[eDVBServiceRecord] Recording to %s...", m_filename.c_str());
 		::remove(m_filename.c_str());
 		int fd = ::open(m_filename.c_str(), O_WRONLY | O_CREAT | O_LARGEFILE | O_CLOEXEC, 0666);
@@ -306,7 +450,7 @@ int eDVBServiceRecord::doRecord()
 			::close(fd);
 			return errNoDemuxAvailable;
 		}
-		demux->createTSRecorder(m_record, m_packet_size);
+		demux->createTSRecorder(m_record, m_packet_size, false);
 		if (!m_record)
 		{
 			eDebug("[eDVBServiceRecord] no ts recorder available.");
@@ -335,6 +479,23 @@ int eDVBServiceRecord::doRecord()
 			eDebug("[eDVBServiceRecord] getting program info failed.");
 		else
 		{
+			// Check if channel needs software descrambling
+			bool is_encrypted = program.isCrypted();
+			if (is_encrypted && !m_use_software_descramble)
+			{
+				eDebug("[eDVBServiceRecord] Channel is encrypted, setting up software descrambler");
+				setupSoftwareDescrambler(program);
+
+				// Always attach descrambler immediately
+				// - For algo=3 channels: will descramble when keys arrive
+				// - For CI channels: PASSTHROUGH mode, but TSC bits get cleared
+				if (m_csa_session)
+				{
+					eDebug("[eDVBServiceRecord] Attaching CSA session to recorder");
+					m_record->setDescrambler(static_cast<iServiceScrambled*>(m_csa_session.operator->()));
+				}
+			}
+
 			std::set<int> pids_to_record;
 
 			eServiceReferenceDVB ref = m_ref.getParentServiceReference();
@@ -416,6 +577,12 @@ int eDVBServiceRecord::doRecord()
 					if (i != program.audioStreams.begin())
 						eDebugNoNewLine(", ");
 					eDebugNoNewLine("%04x", i->pid);
+
+					if (i->rdsPid != -1)
+					{
+						pids_to_record.insert(i->rdsPid);
+						eDebugNoNewLine(", (RDS %04x)", i->rdsPid);
+					}
 				}
 				eDebugNoNewLine(")");
 			}
@@ -448,6 +615,8 @@ int eDVBServiceRecord::doRecord()
 				{
 					if (i->capid >= 0) pids_to_record.insert(i->capid);
 				}
+				pids_to_record.insert(EventInformationSection::PID);
+				pids_to_record.insert(TimeAndDateSection::PID);
 			}
 
 			bool include_ait = eConfigManager::getConfigBoolValue("config.recording.include_ait");
@@ -499,13 +668,83 @@ int eDVBServiceRecord::doRecord()
 	return 0;
 }
 
+void eDVBServiceRecord::updateDecoder()
+{
+	int vpid = -1, vpidtype = -1, apid = -1, apidtype = -1;
+
+	eDVBServicePMTHandler &h = m_service_handler;
+
+	eDVBServicePMTHandler::program program;
+	if (m_service_handler.getProgramInfo(program))
+		eDebug("getting program info failed.");
+	else
+	{
+		eDebugNoNewLine("have %zd video stream(s)", program.videoStreams.size());
+		if (!program.videoStreams.empty())
+		{
+			eDebugNoNewLine(" (");
+			for (std::vector<eDVBServicePMTHandler::videoStream>::const_iterator
+				i(program.videoStreams.begin());
+				i != program.videoStreams.end(); ++i)
+			{
+				if (vpid == -1)
+				{
+					vpid = i->pid;
+					vpidtype = i->type;
+				}
+				if (i != program.videoStreams.begin())
+					eDebugNoNewLine(", ");
+				eDebugNoNewLine("%04x", i->pid);
+			}
+			eDebugNoNewLine(")");
+		}
+
+		eDebugNoNewLine(", and %zd audio stream(s)", program.audioStreams.size());
+		if (!program.audioStreams.empty())
+		{
+			eDebugNoNewLine(" (");
+			for (std::vector<eDVBServicePMTHandler::audioStream>::const_iterator
+				i(program.audioStreams.begin());
+				i != program.audioStreams.end(); ++i)
+			{
+				if (i != program.audioStreams.begin())
+					eDebugNoNewLine(", ");
+				eDebugNoNewLine("%04x", i->pid);
+			}
+			eDebugNoNewLine(")");
+		}
+
+		apid = program.audioStreams[program.defaultAudioStream].pid;
+		apidtype = program.audioStreams[program.defaultAudioStream].type;
+
+		eDebugNoNewLine(", and the pcr pid is %04x\n", program.pcrPid);
+	}
+
+	if (!m_decoder)
+	{
+		h.getDecodeDemux(m_decode_demux);
+		if (m_decode_demux)
+		{
+			m_decode_demux->getMPEGDecoder(m_decoder, 0);
+		}
+	}
+
+	if (m_decoder)
+	{
+		m_decoder->setVideoPID(vpid, vpidtype);
+		m_decoder->setAudioPID(apid, apidtype);
+		m_decoder->setSyncPCR(-1);
+		m_decoder->play();
+	}
+}
+
 RESULT eDVBServiceRecord::frontendInfo(ePtr<iFrontendInformation> &ptr)
 {
 	ptr = this;
 	return 0;
 }
 
-RESULT eDVBServiceRecord::connectEvent(const sigc::slot2<void,iRecordableService*,int> &event, ePtr<eConnection> &connection)
+RESULT eDVBServiceRecord::connectEvent(const sigc::slot<void(iRecordableService*,int)> &event, ePtr<eConnection> &connection)
 {
 	connection = new eConnection((iRecordableService*)this, m_event.connect(event));
 	return 0;
@@ -576,7 +815,12 @@ void eDVBServiceRecord::gotNewEvent(int /*error*/)
 
 void eDVBServiceRecord::saveCutlist()
 {
-			/* XXX: dupe of eDVBServicePlay::saveCuesheet, refactor plz */
+	/* XXX: dupe of eDVBServicePlay::saveCuesheet, refactor plz */
+
+	/* save cuesheet only when main file is accessible. */
+	if (::access(m_filename.c_str(), R_OK) < 0)
+		return;
+
 	std::string filename = m_filename + ".cuts";
 
 	eDVBTSTools tstools;
@@ -603,7 +847,7 @@ void eDVBServiceRecord::saveCutlist()
 				eDebug("[eDVBServiceRecord] fixing up PTS failed, not saving");
 				continue;
 			}
-			eDebug("[eDVBServiceRecord] fixed up %llx to %llx (offset %llx)", i->second, p, offset);
+			eDebug("[eDVBServiceRecord] fixed up %llx to %llx (offset %jx)", i->second, p, (intmax_t)offset);
 			where = htobe64(p);
 			what = htonl(2); /* mark */
 			fwrite(&where, sizeof(where), 1, f);

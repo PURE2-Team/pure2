@@ -5,6 +5,7 @@
 .DS_Store
 *~
 *.a
+*.bak
 aclocal.m4
 autom4te.cache/
 config.guess
@@ -39,3 +40,14 @@ compile
 .dirstamp
 mipsel-oe-linux-libtool
 doxy/
+*.vsidx
+*.ipch
+*.db
+*.db-shm
+*.db-wal
+*.opendb
+*.wsuo
+*.bin
+/.vs
+.vscode
+path/

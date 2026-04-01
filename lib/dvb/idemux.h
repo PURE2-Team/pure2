@@ -2,6 +2,7 @@
 #define __dvb_idemux_h
 
 #include <lib/dvb/idvb.h>
+#include <lib/service/iservicescrambled.h>
 
 class iDVBSectionReader: public iObject
 {
@@ -9,7 +10,7 @@ public:
 	virtual RESULT setBufferSize(int size)=0;
 	virtual RESULT start(const eDVBSectionFilterMask &mask)=0;
 	virtual RESULT stop()=0;
-	virtual RESULT connectRead(const sigc::slot1<void,const uint8_t*> &read, ePtr<eConnection> &conn)=0;
+	virtual RESULT connectRead(const sigc::slot<void(const uint8_t*)> &read, ePtr<eConnection> &conn)=0;
 	virtual ~iDVBSectionReader() { };
 };
 
@@ -19,7 +20,7 @@ public:
 	virtual RESULT setBufferSize(int size)=0;
 	virtual RESULT start(int pid)=0;
 	virtual RESULT stop()=0;
-	virtual RESULT connectRead(const sigc::slot2<void,const uint8_t*, int> &read, ePtr<eConnection> &conn)=0;
+	virtual RESULT connectRead(const sigc::slot<void(const uint8_t*,int)> &read, ePtr<eConnection> &conn)=0;
 	virtual ~iDVBPESReader() { };
 };
 
@@ -47,6 +48,18 @@ public:
 	virtual RESULT getCurrentPCR(pts_t &pcr) = 0;
 	virtual RESULT getFirstPTS(pts_t &pts) = 0;
 
+	virtual RESULT setDescrambler(ePtr<iServiceScrambled>) = 0;
+
+	// Discard data on sync write timeout instead of retrying.
+	// Use for live soft decoding where stale data is worthless and
+	virtual void setDiscardOnTimeout(bool discard) = 0;
+
+	// Wait for first data to be written (for SoftDecoder sync)
+	virtual bool waitForFirstData(int timeout_ms) = 0;
+
+	// Set write accumulation threshold (0 = continuous writing)
+	virtual void setMinWrite(size_t size) = 0;
+
 	enum {
 		eventWriteError,
 				/* a write error has occurred. data won't get lost if fd is writable after return. */
@@ -55,8 +68,9 @@ public:
 		eventReachedBoundary,
 				/* the programmed boundary was reached. you might set a new target fd. you can close the */
 				/* old one. */
+		eventStreamCorrupt
 	};
-	virtual RESULT connectEvent(const sigc::slot1<void,int> &event, ePtr<eConnection> &conn)=0;
+	virtual RESULT connectEvent(const sigc::slot<void(int)> &event, ePtr<eConnection> &conn)=0;
 };
 
 #endif

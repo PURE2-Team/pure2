@@ -1,15 +1,10 @@
 installdir = $(pkglibdir)/python/Plugins/SystemPlugins/SoftwareManager
 
-SUBDIRS = meta
-
-install_PYTHON =	\
+install_PYTHON = \
 	__init__.py \
 	plugin.py \
 	BackupRestore.py \
 	ImageWizard.py \
-	SoftwareTools.py \
-	ImageBackup.py \
-	Flash_online.py \
 	ShellCompatibleFunctions.py
 
 dist_install_DATA = \
@@ -18,7 +13,6 @@ dist_install_DATA = \
 	installed.png \
 	install.png \
 	noprev.png \
-	plugin.png \
 	remove.png \
 	update.png \
 	upgradeable.png \

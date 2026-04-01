@@ -1,0 +1,11 @@
+<setupxml>
+	<setup key="vps" title="VPS Settings">
+		<item level="0" text="Enable VPS" description="Select 'Yes' to allow the VPS to adjust recording timers based on broadcast Program Delivery Control (PDC) data. For this to work the service must provide reliable event PDC data.">config.plugins.vps.enabled</item>
+		<item level="0" text="Check for PDC" description="Check for PDC availability on each service.">config.plugins.vps.do_PDC_check</item>
+		<item level="0" text="Starting time" description="Set a time offset before a timer is due to start to allow VPS to scan for the latest event timing. Select '0' to disable this feature.">config.plugins.vps.initial_time</item>
+		<item level="0" text="Wake from Shutdown allowed" description="Select 'Yes' to wake the receiver from Shutdown prior to the recording start time to allow the PDC data to make last minute timer adjustments.">config.plugins.vps.allow_wakeup</item>
+		<item level="0" text="Find connected events" description="If an event is interrupted and divided into separate recordings, this feature will search for alternate broadcasts of the same event.">config.plugins.vps.allow_seeking_multiple_pdc</item>
+		<item level="0" text="VPS enabled by default" description="Select 'Yes' to set the VPS flag on all new timers by default.">config.plugins.vps.vps_default</item>
+		<item level="0" text="VPS on instant recordings" description="Select 'Yes' to use PDC data, if available on the current service, to accurately stop the instant recording at the end of the event.">config.plugins.vps.instanttimer</item>
+	</setup>
+</setupxml>

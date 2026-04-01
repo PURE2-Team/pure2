@@ -6,82 +6,67 @@ dist_install_DATA = \
 	lcd.ttf \
 	md_khmurabi_10.ttf \
 	time.ttf \
-	DroidSans-Bold.ttf \
 	DejaVuSans.ttf \
-	HandelGotD.ttf \
-	HandelGotDBol.ttf \
-	nmsbd.ttf \ 
-	Roboto-Caps.ttf \
-	Roboto-Regular.ttf \
+	nmsbd.ttf \
 	LiberationSans-Bold.ttf \
 	LiberationSans-BoldItalic.ttf \
 	LiberationSans-Italic.ttf \
-	LiberationSans-Regular.ttf
+	LiberationSans-Regular.ttf \
+	wqy-microhei.ttc \
+	AbyssinicaSIL-Regular.ttf
 
-if DM800SE 
-dist_install_DATA = \
-	ae_AlMateen.ttf \
-	andale.ttf \
-	lcd.ttf \
-	time.ttf \
-	DroidSans-Bold.ttf \
-	HandelGotD.ttf \
-	HandelGotDBol.ttf \
-	nmsbd.ttf \ 
-	Roboto-Caps.ttf \
-	Roboto-Regular.ttf 
-endif
-
-if DM500HD 
-dist_install_DATA = \
-	ae_AlMateen.ttf \
-	andale.ttf \
-	lcd.ttf \
-	time.ttf \
-	DroidSans-Bold.ttf \
-	HandelGotD.ttf \
-	HandelGotDBol.ttf \
-	nmsbd.ttf \ 
-	Roboto-Caps.ttf \
-	Roboto-Regular.ttf 
-endif
-
-if ET8500 
-dist_install_DATA += verdana.ttf Roboto-BoldItalic.ttf
-endif
-
-if ET8500S 
-dist_install_DATA += verdana.ttf Roboto-BoldItalic.ttf
-endif
+install-data-hook:
+	cd $(DESTDIR)$(datadir)/fonts && \
+	$(LN_S) wqy-microhei.ttc fallback.font
 
 if VUULTIMO
-dist_install_DATA += analog.ttf MyriadPro-Regular.otf MyriadPro-Semibold.otf MyriadPro-SemiboldIt.otf verdana.ttf Roboto-BoldItalic.ttf
+dist_install_DATA += analog.ttf MyriadPro-Regular.otf MyriadPro-Semibold.otf MyriadPro-SemiboldIt.otf
 endif
 
 if VUDUO2
-dist_install_DATA += analog.ttf MyriadPro-Regular.otf MyriadPro-Semibold.otf MyriadPro-SemiboldIt.otf verdana.ttf Roboto-BoldItalic.ttf
+dist_install_DATA += analog.ttf MyriadPro-Regular.otf MyriadPro-Semibold.otf MyriadPro-SemiboldIt.otf
 endif
 
 if ET10000
-dist_install_DATA += analog.ttf MyriadPro-Regular.otf MyriadPro-Semibold.otf MyriadPro-SemiboldIt.otf verdana.ttf Roboto-BoldItalic.ttf
+dist_install_DATA += analog.ttf MyriadPro-Regular.otf MyriadPro-Semibold.otf MyriadPro-SemiboldIt.otf
 endif
 
 if SKYLAKE
-dist_install_DATA += analog.ttf MyriadPro-Regular.otf MyriadPro-Semibold.otf MyriadPro-SemiboldIt.otf verdana.ttf Roboto-BoldItalic.ttf
+dist_install_DATA += analog.ttf MyriadPro-Regular.otf MyriadPro-Semibold.otf MyriadPro-SemiboldIt.otf
 endif
 
 if INIHDP
-dist_install_DATA += analog.ttf MyriadPro-Regular.otf MyriadPro-Semibold.otf MyriadPro-SemiboldIt.otf verdana.ttf Roboto-BoldItalic.ttf
+dist_install_DATA += analog.ttf MyriadPro-Regular.otf MyriadPro-Semibold.otf MyriadPro-SemiboldIt.otf
 endif
 
 if VUSOLO4K
-dist_install_DATA += analog.ttf MyriadPro-Regular.otf MyriadPro-Semibold.otf MyriadPro-SemiboldIt.otf verdana.ttf Roboto-BoldItalic.ttf
+dist_install_DATA += analog.ttf MyriadPro-Regular.otf MyriadPro-Semibold.otf MyriadPro-SemiboldIt.otf
 endif
 
 if VUULTIMO4K
-dist_install_DATA += analog.ttf MyriadPro-Regular.otf MyriadPro-Semibold.otf MyriadPro-SemiboldIt.otf verdana.ttf Roboto-BoldItalic.ttf
+dist_install_DATA += analog.ttf MyriadPro-Regular.otf MyriadPro-Semibold.otf MyriadPro-SemiboldIt.otf
 endif
 
 if VUUNO4KSE
-dist_install_DATA += analog.ttf MyriadPro-Regular.otf MyriadPro-Semibold.otf MyriadPro-SemiboldIt.otf verdana.ttf Roboto-BoldItalic.ttf
+dist_install_DATA += analog.ttf MyriadPro-Regular.otf MyriadPro-Semibold.otf MyriadPro-SemiboldIt.otf
+endif
+
+if VUDUO4K
+dist_install_DATA += analog.ttf MyriadPro-Regular.otf MyriadPro-Semibold.otf MyriadPro-SemiboldIt.otf
+endif
+
+if VUDUO4KSE
+dist_install_DATA += analog.ttf MyriadPro-Regular.otf MyriadPro-Semibold.otf MyriadPro-SemiboldIt.otf
+endif
+
+if ET8500
+dist_install_DATA += verdana.ttf
+endif
+
+if ET8500S
+dist_install_DATA += verdana.ttf
+endif
+
+if OSMIO4KPLUS
+dist_install_DATA += analog.ttf MyriadPro-Regular.otf MyriadPro-Semibold.otf MyriadPro-SemiboldIt.otf
 endif

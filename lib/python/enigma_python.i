@@ -1,27 +1,28 @@
+
 /*
   NOTE: you have two options when adding classes so that
   they are callable *from* python.
-  
+
    - either you %include the header file
    - or you re-declare it
-   
+
   In both cases, you must #include the required
   header file (i.e. the header file itself), otherwise
   enigma_python_wrap.cxx won't build.
-  
+
 	In case you import the whole header file,
 	please make sure that no unimportant stuff
 	is wrapped, as this makes the wrapper stuff
-	much more complex and it can probably break 
+	much more complex and it can probably break
 	very easily because of missing typemaps etc.
-	
+
 	you could make use of dizzy macros to ensure
 	that some stuff is left out when parsed as SWIG
-	definitions, but be sure to not modify the binary 
+	definitions, but be sure to not modify the binary
 	representation. DON'T USE #ifdef SWIG_COMPILE
 	for leaving out stuff (unless you *really* know
 	what you are doing,of course!). you WILL break it.
-		
+
 	The better way (with more work) is to re-declare
 	the class. It won't be compiled, so you can
 	leave out stuff as you like.
@@ -29,10 +30,13 @@
 
 
 Oh, things like "operator= is private in this context" etc.
-is usually caused by not marking PSignals as immutable. 
+is usually caused by not marking PSignals as immutable.
 */
 
 %module enigma
+%begin %{
+#pragma GCC diagnostic ignored "-Wsign-compare"
+%}
 %{
 
 #define SWIG_COMPILE
@@ -44,12 +48,15 @@ is usually caused by not marking PSignals as immutable.
 #include <lib/base/message.h>
 #include <lib/base/modelinformation.h>
 #include <lib/base/e2avahi.h>
+#include <lib/base/internetcheck.h>
+#include <lib/base/profile.h>
 #include <lib/driver/rc.h>
 #include <lib/driver/rcinput_swig.h>
 #include <lib/service/event.h>
 #include <lib/service/iservice.h>
 #include <lib/service/service.h>
 #include <lib/service/servicedvb.h>
+#include <lib/service/servicefs.h>
 #include <lib/service/servicepeer.h>
 #include <lib/gdi/fb.h>
 #include <lib/gdi/font.h>
@@ -59,10 +66,9 @@ is usually caused by not marking PSignals as immutable.
 #include <lib/gdi/gmaindc.h>
 #include <lib/gui/ewidget.h>
 #include <lib/gui/elabel.h>
-#include <lib/gui/einput.h>
-#include <lib/gui/einputstring.h>
-#include <lib/gui/einputnumber.h>
 #include <lib/gui/epixmap.h>
+#include <lib/gui/erectangle.h>
+#include <lib/gui/estack.h>
 #include <lib/gui/ebutton.h>
 #include <lib/gui/ewindow.h>
 #include <lib/gui/ewidgetdesktop.h>
@@ -80,6 +86,7 @@ is usually caused by not marking PSignals as immutable.
 #include <lib/gui/elistboxcontent.h>
 #include <lib/gui/esubtitle.h>
 #include <lib/service/listboxservice.h>
+#include <lib/service/elistboxservicecontent.h>
 #include <lib/nav/core.h>
 #include <lib/actions/action.h>
 #include <lib/gdi/gfont.h>
@@ -95,14 +102,18 @@ is usually caused by not marking PSignals as immutable.
 #include <lib/dvb/dvbtime.h>
 #include <lib/dvb/pmt.h>
 #include <lib/dvb/cahandler.h>
+#include <lib/dvb/csaengine.h>
 #include <lib/dvb/fastscan.h>
 #include <lib/dvb/cablescan.h>
 #include <lib/dvb/encoder.h>
 #include <lib/dvb/streamserver.h>
+#include <lib/dvb/rtspstreamserver.h>
+#include <lib/dvb/metaparser.h>
 #include <lib/components/scan.h>
 #include <lib/components/file_eraser.h>
 #include <lib/components/tuxtxtapp.h>
 #include <lib/driver/avswitch.h>
+#include <lib/driver/avcontrol.h>
 #include <lib/driver/hdmi_cec.h>
 #include <lib/driver/rfmod.h>
 #include <lib/driver/misc_options.h>
@@ -114,13 +125,17 @@ is usually caused by not marking PSignals as immutable.
 #include <lib/python/python.h>
 #include <lib/python/python_helpers.h>
 #include <lib/gdi/picload.h>
+#include <lib/dvb/fcc.h>
+#include <lib/gdi/accel.h>
+#include <include/hardwaredb.h>
+#include <lib/base/esettings.h>
 %}
 
 %feature("ref")   iObject "$this->AddRef(); /* eDebug(\"AddRef (%s:%d)!\", __FILE__, __LINE__); */ "
 %feature("unref") iObject "$this->Release(); /* eDebug(\"Release! %s:%d\", __FILE__, __LINE__); */ "
 
 /* this magic allows smartpointer to be used as OUTPUT arguments, i.e. call-by-reference-styled return value. */
-
+#if SWIG_VERSION < 0x040300
 %define %typemap_output_simple(Type)
  %typemap(in,numinputs=0) Type *OUTPUT ($*1_ltype temp),
               Type &OUTPUT ($*1_ltype temp)
@@ -142,12 +157,58 @@ is usually caused by not marking PSignals as immutable.
    "$result = t_output_helper($result, ((*$1) ? SWIG_NewPointerObj((void*)($1), $1_descriptor, 1) : (delete $1, Py_INCREF(Py_None), Py_None)));"
 %enddef
 
+#else
+
+%define %typemap_output_simple(Type)
+ %typemap(in,numinputs=0) Type *OUTPUT ($*1_ltype temp),
+              Type &OUTPUT ($*1_ltype temp)
+   "$1 = new Type; (void)temp;";
+ %fragment("SWIG_Python_AppendOutput"{Type},"header",
+     fragment="SWIG_Python_AppendOutput") {}
+ %typemap(argout,fragment="SWIG_Python_AppendOutput"{Type}) Type *OUTPUT, Type &OUTPUT
+   "$result = SWIG_Python_AppendOutput($result, (SWIG_NewPointerObj((void*)($1), $1_descriptor, 1)), $isvoid);"   
+%enddef
+
+%define %typemap_output_ptr(Type)
+ %typemap(in,numinputs=0) Type *OUTPUT ($*1_ltype temp),
+              Type &OUTPUT ($*1_ltype temp)
+   "$1 = new Type; (void)temp;";
+ %fragment("SWIG_Python_AppendOutput"{Type},"header",
+     fragment="SWIG_Python_AppendOutput") {}
+ %typemap(argout,fragment="SWIG_Python_AppendOutput"{Type}) Type *OUTPUT, Type &OUTPUT
+		// generate None if smartpointer is NULL
+   "$result = SWIG_Python_AppendOutput($result, ((*$1) ? SWIG_NewPointerObj((void*)($1), $1_descriptor, 1) : (delete $1, Py_INCREF(Py_None), Py_None)), $isvoid);"
+%enddef
+
+#endif
+
 
 #define DEBUG
 typedef long time_t;
 %include "typemaps.i"
 %include "std_string.i"
+%include "stdint.i"
 %include <lib/python/swig.h>
+
+/* Stub declarations for base classes not directly wrapped by SWIG.
+   These are abstract or internal classes that SWIG needs to know about
+   for type hierarchy, but must never try to instantiate directly.
+   Using protected constructors so SWIG won't generate direct wrappers
+   but derived classes can still be constructed normally. */
+namespace sigc { class trackable { protected: trackable() {} virtual ~trackable() {} }; }
+class eThread           { protected: eThread() {}           virtual ~eThread() {} };
+class eMessagePumpMT    { protected: eMessagePumpMT() {}    virtual ~eMessagePumpMT() {} };
+class eServerSocket     { protected: eServerSocket() {}     virtual ~eServerSocket() {} };
+class eRCDriver         { protected: eRCDriver() {}         virtual ~eRCDriver() {} };
+class eConfigManager    { protected: eConfigManager() {}    virtual ~eConfigManager() {} };
+class LongCrcSection    { protected: LongCrcSection() {}    virtual ~LongCrcSection() {} };
+class eDVBPMTParser     { protected: eDVBPMTParser() {}     virtual ~eDVBPMTParser() {} };
+class iDVBSatelliteEquipmentControl { protected: iDVBSatelliteEquipmentControl() {} virtual ~iDVBSatelliteEquipmentControl() {} };
+class iDVBChannelList   { protected: iDVBChannelList() {}   virtual ~iDVBChannelList() {} };
+
+%immutable eApp;
+%rename(_raise) eWidget::raise;
+
 %include <lib/base/object.h>
 %include <lib/base/eenv.h>
 %include <lib/base/eerror.h>
@@ -163,11 +224,13 @@ typedef long time_t;
 %include <lib/base/smartptr.h>
 %include <lib/service/event.h>
 %include <lib/service/iservice.h>
+%include <lib/service/servicefs.h>
 %include <lib/service/service.h>
 %include <lib/base/e2avahi.h>
 %include <lib/service/servicepeer.h>
 
 // TODO: embed these...
+%immutable eInternetCheck::callback;
 %immutable ePicLoad::PictureData;
 %immutable eButton::selected;
 %immutable eInput::changed;
@@ -183,20 +246,17 @@ typedef long time_t;
 %immutable eDVBCI_UI::ciStateChanged;
 %immutable eSocket_UI::socketStateChanged;
 %immutable eDVBResourceManager::frontendUseMaskChanged;
-%immutable eAVSwitch::vcr_sb_notifier;
+%immutable eAVControl::vcr_sb_notifier;
 %immutable eHdmiCEC::messageReceived;
 %immutable eHdmiCEC::addressChanged;
 %immutable ePythonMessagePump::recv_msg;
 %immutable eDVBLocalTimeHandler::m_timeUpdated;
-%immutable iCryptoInfo::clientname;
-%immutable iCryptoInfo::clientinfo;
-%immutable iCryptoInfo::verboseinfo;
-%immutable iCryptoInfo::usedcaid;
-%immutable iCryptoInfo::decodetime;
-%immutable iCryptoInfo::usedcardid;
+%immutable eFCCServiceManager::m_fcc_event;
 %immutable eTuxtxtApp::appClosed;
 %immutable iDVBChannel::receivedTsidOnid;
+%immutable eStreamServer::streamStatusChanged;
 %include <lib/base/message.h>
+%include <lib/base/internetcheck.h>
 %include <lib/base/etpm.h>
 %include <lib/driver/rc.h>
 %include <lib/driver/rcinput_swig.h>
@@ -210,10 +270,9 @@ typedef long time_t;
 %include <lib/gdi/esize.h>
 %include <lib/gui/ewidget.h>
 %include <lib/gui/elabel.h>
-%include <lib/gui/einput.h>
-%include <lib/gui/einputstring.h>
-%include <lib/gui/einputnumber.h>
 %include <lib/gui/epixmap.h>
+%include <lib/gui/erectangle.h>
+%include <lib/gui/estack.h>
 %include <lib/gui/ecanvas.h>
 %include <lib/gui/ebutton.h>
 %include <lib/gui/ewindow.h>
@@ -229,6 +288,7 @@ typedef long time_t;
 %include <lib/gui/evideo.h>
 %include <lib/gui/esubtitle.h>
 %include <lib/service/listboxservice.h>
+%include <lib/service/elistboxservicecontent.h>
 %include <lib/nav/core.h>
 %include <lib/actions/action.h>
 %include <lib/gdi/gfont.h>
@@ -243,12 +303,14 @@ typedef long time_t;
 %include <lib/dvb/frontend.h>
 %include <lib/dvb/pmt.h>
 %include <lib/dvb/cahandler.h>
+%include <lib/dvb/csaengine.h>
 %include <lib/dvb/fastscan.h>
 %include <lib/dvb/cablescan.h>
 %include <lib/components/scan.h>
 %include <lib/components/file_eraser.h>
 %include <lib/components/tuxtxtapp.h>
 %include <lib/driver/avswitch.h>
+%include <lib/driver/avcontrol.h>
 %include <lib/driver/hdmi_cec.h>
 %include <lib/driver/rfmod.h>
 %include <lib/driver/misc_options.h>
@@ -261,7 +323,13 @@ typedef long time_t;
 %include <lib/python/python.h>
 %include <lib/python/pythonconfig.h>
 %include <lib/gdi/picload.h>
+%include <lib/dvb/fcc.h>
 %include <lib/dvb/streamserver.h>
+%include <lib/dvb/rtspstreamserver.h>
+%include <lib/dvb/metaparser.h>
+%include <lib/gdi/accel.h>
+%include <lib/base/esettings.h>
+
 /**************  eptr  **************/
 
 /**************  signals  **************/
@@ -319,9 +387,21 @@ public:
 	$1 = $input->get();
 }
 
+template<class R, class P0, class P1, class P2> class PSignal3
+{
+public:
+	PyObject *get();
+};
+
+%template(PSignal3VISS) PSignal3<void,int,const char *,const char *>;
+
+%typemap(out) PSignal3VISS {
+	$1 = $input->get();
+}
+
 %{
 RESULT SwigFromPython(ePtr<gPixmap> &result, PyObject *obj)
-{	
+{
 	ePtr<gPixmap> *res;
 
 	res = 0;
@@ -427,15 +507,73 @@ int getLinkedSlotID(int fe)
 }
 %}
 
+void setFCCEnable(int);
+%{
+void setFCCEnable(int enable)
+{
+        eFCCServiceManager *fcc_mng = eFCCServiceManager::getInstance();
+        if (fcc_mng) setFCCEnable(enable);
+}
+%}
+
 bool isFBCLink(int);
 %{
 bool isFBCLink(int fe)
 {
         eFBCTunerManager *mgr = eFBCTunerManager::getInstance();
-        if (mgr) return mgr->isFBCLink(fe);
+        if (mgr) return mgr->IsFBCLink(fe);
         return false;
 }
 %}
+
+PyObject *getFontFaces();
+%{
+PyObject *getFontFaces()
+{
+	std::vector<std::string> v = fontRenderClass::getInstance()->getFontFaces();
+	ePyObject result = PyList_New(v.size());
+	for (size_t i = 0; i < v.size(); i++)
+		PyList_SET_ITEM(result, i, PyUnicode_FromString(v[i].c_str()));
+        return result;
+}
+%}
+
+void setACCELDebug(int);
+%{
+void setACCELDebug(int enable)
+{
+	gAccel::getInstance()->setAccelDebug(enable);
+}
+%}
+
+PyObject *getDeviceDB();
+%{
+PyObject *getDeviceDB()
+{
+	ePyObject result = PyDict_New();
+	for (const auto & [ key, value ] : HardwareDB) {
+		PutToDict(result, key.c_str(), value.c_str());
+	}
+    return result;
+}
+%}
+
+void eProfileDone();
+%{
+void eProfileDone()
+{
+	eProfile::getInstance().close();
+}
+%}
+
+void eProfileWrite(const char*);
+%{
+void eProfileWrite(const char* checkPoint)
+{
+	eProfile::getInstance().write(checkPoint);
+}
+%}
+
 
 /************** temp *****************/
 
@@ -445,28 +583,50 @@ extern void runMainloop();
 extern void quitMainloop(int exit_code);
 extern eApplication *getApplication();
 extern int getPrevAsciiCode();
+extern void setPrevAsciiCode(int code);
+extern int getBsodCounter();
+extern void resetBsodCounter();
 extern void addFont(const char *filename, const char *alias, int scale_factor, int is_replacement, int renderflags = 0);
 extern const char *getEnigmaVersionString();
+extern const char *getE2Rev();
 extern const char *getGStreamerVersionString();
 extern void dump_malloc_stats(void);
 #ifndef HAVE_OSDANIMATION
 extern void setAnimation_current(int a);
 extern void setAnimation_speed(int speed);
+extern void setAnimation_current_listbox(int a);
 #endif
+extern void pauseInit(void);
+extern void resumeInit(void);
+extern int checkInternetAccess(const char* host, int timeout = 3);
+extern int getVFDSymbolsPoll();
+extern int getE2Flags();
+extern bool checkLogin(const char *user, const char *pwd);
 %}
 
 extern void addFont(const char *filename, const char *alias, int scale_factor, int is_replacement, int renderflags = 0);
 extern int getPrevAsciiCode();
+extern void setPrevAsciiCode(int code);
+extern int getBsodCounter();
+extern void resetBsodCounter();
 extern void runMainloop();
 extern void quitMainloop(int exit_code);
 extern eApplication *getApplication();
 extern const char *getEnigmaVersionString();
+extern const char *getE2Rev();
 extern const char *getGStreamerVersionString();
 extern void dump_malloc_stats(void);
 #ifndef HAVE_OSDANIMATION
 extern void setAnimation_current(int a);
 extern void setAnimation_speed(int speed);
+extern void setAnimation_current_listbox(int a);
 #endif
+extern void pauseInit(void);
+extern void resumeInit(void);
+extern int checkInternetAccess(const char* host, int timeout = 3);
+extern int getVFDSymbolsPoll();
+extern int getE2Flags();
+extern bool checkLogin(const char *user, const char *pwd);
 
 %include <lib/python/python_console.i>
 %include <lib/python/python_base.i>
